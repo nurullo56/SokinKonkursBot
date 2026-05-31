@@ -130,7 +130,8 @@ async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str
                 f"{ce('🔗')} Sizning havolangiz:\n<code>{ref_link}</code>"
             )
 
-        await loading.edit_text(text, reply_markup=get_user_reply_keyboard())
+        await loading.delete()
+        await message.answer(text, reply_markup=get_user_reply_keyboard())
 
         result = await db.execute(
             "UPDATE users SET welcomed = TRUE WHERE user_id = ? AND welcomed = FALSE", (user_id,)

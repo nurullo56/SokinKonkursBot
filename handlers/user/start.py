@@ -85,62 +85,66 @@ async def _notify_admins(db: Database, bot: Bot, user: object) -> None:
 
 async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str, user_id: int) -> None:
     loading = await message.answer(f"{ce('⌛')} Yuklanmoqda...")
-    await asyncio.sleep(0.4)
-
-    sub_svc = SubscriptionService(db, bot)
-    unsubscribed = await sub_svc.get_unsubscribed(user_id)
-    if unsubscribed:
-        await loading.edit_text(
-            sub_svc.build_prompt_text(unsubscribed),
-            reply_markup=get_subscription_keyboard(unsubscribed),
-        )
-        return
-
-    bot_mode = await db.get_setting("bot_mode") or "BOT"
-
-    if bot_mode == "CHANNEL":
-        user_row = await db.fetchone(
-            "SELECT verified, contest_number FROM users WHERE user_id = ?", (user_id,)
-        )
-        if not user_row:
-            await loading.edit_text("❌ Xatolik yuz berdi. /start bosing.")
+    try:
+        sub_svc = SubscriptionService(db, bot)
+        unsubscribed = await sub_svc.get_unsubscribed(user_id)
+        if unsubscribed:
+            await loading.edit_text(
+                sub_svc.build_prompt_text(unsubscribed),
+                reply_markup=get_subscription_keyboard(unsubscribed),
+            )
             return
-        verified = user_row.get("verified") or False
-        contest_number = user_row.get("contest_number")
-        if not verified or not contest_number:
-            contest_number = await ContestService(db).verify_user(user_id)
-        text = (
-            f"{ce('🎉')} <b>Kanal konkursiga xush kelibsiz!</b>\n\n"
-            f"{ce('✅')} Siz barcha homiy kanallarga obuna bo'ldingiz va konkursda ro'yxatdan o'tdingiz!\n\n"
-            f"🎫 Sizning konkurs raqamingiz: <b>{contest_number}</b>\n\n"
-            "📣 Konkurs natijalari kanalda e'lon qilinadi. Obunani o'chirmang!"
-        )
-    else:
-        count = await ReferralService(db).get_referral_count(user_id)
-        group_id = await db.get_setting("group_id") or "guruh_belgilanmagan"
-        ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
-        text = (
-            f"{ce('🎉')} Konkursga xush kelibsiz!\n\n"
-            f"{ce('📃')} Qoidalar:\n"
-            f"{ce('1️⃣')} 5 ta do'stingizni botga taklif qiling\n"
-            f"{ce('2️⃣')} Barcha do'stlaringiz /start bosishi kerak\n"
-            f"{ce('3️⃣')} 5 ta odam to'plab, statistikangizni skrinshot qiling\n"
-            f"{ce('4️⃣')} Skrinshotni guruhga tashlang: {group_id}\n"
-            f"{ce('5️⃣')} Bot tekshiradi va raqam beradi!\n\n"
-            f"{ce('👥')} Hozirgi taklif qilganlaringiz: {count}/5\n"
-            f"{ce('🔗')} Sizning havolangiz:\n<code>{ref_link}</code>"
-        )
 
-    await loading.edit_text(text, reply_markup=get_user_reply_keyboard())
+        bot_mode = await db.get_setting("bot_mode") or "BOT"
 
-    # WHERE welcomed = FALSE — atomic: faqat birinchi coroutine muvaffaqiyatli update qiladi
-    result = await db.execute(
-        "UPDATE users SET welcomed = TRUE WHERE user_id = ? AND welcomed = FALSE", (user_id,)
-    )
-    await db.commit()
-    if result.rowcount > 0:
-        await _notify_admins(db, bot, message.from_user)
-        await _notify_referrer(db, bot, message.from_user)
+        if bot_mode == "CHANNEL":
+            user_row = await db.fetchone(
+                "SELECT verified, contest_number FROM users WHERE user_id = ?", (user_id,)
+            )
+            if not user_row:
+                await loading.edit_text("❌ Xatolik yuz berdi. /start bosing.")
+                return
+            verified = user_row.get("verified") or False
+            contest_number = user_row.get("contest_number")
+            if not verified or not contest_number:
+                contest_number = await ContestService(db).verify_user(user_id)
+            text = (
+                f"{ce('🎉')} <b>Kanal konkursiga xush kelibsiz!</b>\n\n"
+                f"{ce('✅')} Siz barcha homiy kanallarga obuna bo'ldingiz va konkursda ro'yxatdan o'tdingiz!\n\n"
+                f"🎫 Sizning konkurs raqamingiz: <b>{contest_number}</b>\n\n"
+                "📣 Konkurs natijalari kanalda e'lon qilinadi. Obunani o'chirmang!"
+            )
+        else:
+            count = await ReferralService(db).get_referral_count(user_id)
+            group_id = await db.get_setting("group_id") or "guruh_belgilanmagan"
+            ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+            text = (
+                f"{ce('🎉')} Konkursga xush kelibsiz!\n\n"
+                f"{ce('📃')} Qoidalar:\n"
+                f"{ce('1️⃣')} 5 ta do'stingizni botga taklif qiling\n"
+                f"{ce('2️⃣')} Barcha do'stlaringiz /start bosishi kerak\n"
+                f"{ce('3️⃣')} 5 ta odam to'plab, statistikangizni skrinshot qiling\n"
+                f"{ce('4️⃣')} Skrinshotni guruhga tashlang: {group_id}\n"
+                f"{ce('5️⃣')} Bot tekshiradi va raqam beradi!\n\n"
+                f"{ce('👥')} Hozirgi taklif qilganlaringiz: {count}/5\n"
+                f"{ce('🔗')} Sizning havolangiz:\n<code>{ref_link}</code>"
+            )
+
+        await loading.edit_text(text, reply_markup=get_user_reply_keyboard())
+
+        result = await db.execute(
+            "UPDATE users SET welcomed = TRUE WHERE user_id = ? AND welcomed = FALSE", (user_id,)
+        )
+        await db.commit()
+        if result.rowcount > 0:
+            await _notify_admins(db, bot, message.from_user)
+            await _notify_referrer(db, bot, message.from_user)
+
+    except Exception:
+        try:
+            await loading.edit_text("❌ Xatolik yuz berdi. Qayta /start bosing.")
+        except Exception:
+            pass
 
 
 @router.message(F.entities.func(lambda ents: any(e.type == "custom_emoji" for e in ents)))
@@ -308,45 +312,54 @@ async def zayafka_joined_callback(callback: CallbackQuery, db: Database) -> None
 @router.callback_query(F.data == "check_subscription")
 async def check_subscription_callback(callback: CallbackQuery, db: Database, bot: Bot) -> None:
     await callback.answer()
-    await callback.message.edit_text(f"{ce('⌛')} Tekshirilmoqda...")
-    await asyncio.sleep(0.5)
+    try:
+        await callback.message.edit_text(f"{ce('⌛')} Tekshirilmoqda...")
+    except Exception:
+        pass
 
     user_id = callback.from_user.id
     sub_svc = SubscriptionService(db, bot)
-    unsubscribed = await sub_svc.get_unsubscribed(user_id)
-
-    if not unsubscribed:
-        bot_mode = await db.get_setting("bot_mode") or "BOT"
-        if bot_mode == "CHANNEL":
-            user_row = await db.fetchone(
-                "SELECT verified, contest_number FROM users WHERE user_id = ?", (user_id,)
-            )
-            if not user_row:
-                await callback.message.edit_text("❌ Xatolik yuz berdi. /start bosing.")
-                return
-            verified = user_row.get("verified") or False
-            contest_number = user_row.get("contest_number")
-            if not verified or not contest_number:
-                contest_number = await ContestService(db).verify_user(user_id)
-            await callback.message.edit_text(
-                f"{ce('🎉')} <b>Kanal konkursiga xush kelibsiz!</b>\n\n"
-                f"{ce('✅')} Barcha kanallarga obuna bo'ldingiz va ro'yxatdan o'tdingiz!\n\n"
-                f"🎫 Sizning konkurs raqamingiz: <b>{contest_number}</b>\n\n"
-                "📣 Konkurs natijalari kanalda e'lon qilinadi. Kanallardan chiqib ketmang!",
-            )
-        else:
-            await callback.message.edit_text(
-                f"{ce('✅')} Ajoyib! Siz barcha kanallarga obuna bo'ldingiz.\n\n"
-                "Endi /start buyrug'ini yuboring.",
-            )
-        return
-
-    text = sub_svc.build_prompt_text(unsubscribed)
-    keyboard = get_subscription_keyboard(unsubscribed)
     try:
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        unsubscribed = await sub_svc.get_unsubscribed(user_id)
+
+        if not unsubscribed:
+            bot_mode = await db.get_setting("bot_mode") or "BOT"
+            if bot_mode == "CHANNEL":
+                user_row = await db.fetchone(
+                    "SELECT verified, contest_number FROM users WHERE user_id = ?", (user_id,)
+                )
+                if not user_row:
+                    await callback.message.edit_text("❌ Xatolik yuz berdi. /start bosing.")
+                    return
+                verified = user_row.get("verified") or False
+                contest_number = user_row.get("contest_number")
+                if not verified or not contest_number:
+                    contest_number = await ContestService(db).verify_user(user_id)
+                await callback.message.edit_text(
+                    f"{ce('🎉')} <b>Kanal konkursiga xush kelibsiz!</b>\n\n"
+                    f"{ce('✅')} Barcha kanallarga obuna bo'ldingiz va ro'yxatdan o'tdingiz!\n\n"
+                    f"🎫 Sizning konkurs raqamingiz: <b>{contest_number}</b>\n\n"
+                    "📣 Konkurs natijalari kanalda e'lon qilinadi. Kanallardan chiqib ketmang!",
+                )
+            else:
+                await callback.message.edit_text(
+                    f"{ce('✅')} Ajoyib! Siz barcha kanallarga obuna bo'ldingiz.\n\n"
+                    "Endi /start buyrug'ini yuboring.",
+                )
+            return
+
+        text = sub_svc.build_prompt_text(unsubscribed)
+        keyboard = get_subscription_keyboard(unsubscribed)
+        try:
+            await callback.message.edit_text(text, reply_markup=keyboard)
+        except Exception:
+            await callback.message.answer(text, reply_markup=keyboard)
+
     except Exception:
-        await callback.message.answer(text, reply_markup=keyboard)
+        try:
+            await callback.message.edit_text("❌ Xatolik yuz berdi. Qayta urinib ko'ring.")
+        except Exception:
+            pass
 
 
 @router.message(F.photo, F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))

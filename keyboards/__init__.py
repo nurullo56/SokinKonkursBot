@@ -1,0 +1,40 @@
+from keyboards.admin_kb import (
+    BTN_ADD_PUBLIC,
+    BTN_ADD_ZAYAFKA,
+    BTN_BROADCAST,
+    BTN_CANCEL,
+    BTN_CHANNELS,
+    BTN_CLOSE,
+    BTN_DEL_PUBLIC,
+    BTN_DEL_ZAYAFKA,
+    BTN_RESULTS,
+    BTN_SETTINGS,
+    BTN_SETUP,
+    BTN_START,
+    BTN_STATS,
+    BTN_STOP,
+    BTN_TOGGLE_MODE,
+    get_admin_keyboard_remove,
+    get_admin_reply_keyboard,
+    get_cancel_keyboard,
+)
+from keyboards.user_kb import (
+    get_keyboard_remove,
+    get_phone_keyboard,
+    get_subscription_keyboard,
+    get_user_reply_keyboard,
+)
+
+__all__ = [
+    "get_user_reply_keyboard",
+    "get_subscription_keyboard",
+    "get_admin_reply_keyboard",
+    "get_admin_keyboard_remove",
+    "get_cancel_keyboard",
+    "BTN_STATS", "BTN_SETTINGS", "BTN_START", "BTN_STOP",
+    "BTN_RESULTS", "BTN_CHANNELS",
+    "BTN_ADD_PUBLIC", "BTN_DEL_PUBLIC",
+    "BTN_ADD_ZAYAFKA", "BTN_DEL_ZAYAFKA",
+    "BTN_SETUP", "BTN_CLOSE", "BTN_CANCEL",
+    "BTN_TOGGLE_MODE", "BTN_BROADCAST",
+]

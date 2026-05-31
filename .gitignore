@@ -1,0 +1,29 @@
+﻿# Secrets
+.env
+
+# Database
+contest.db
+contest.db-wal
+contest.db-shm
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Utility scripts
+bot_err.txt
+bot_out.txt
+collect_code.py
+size_checker.py

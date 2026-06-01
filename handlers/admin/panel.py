@@ -20,17 +20,7 @@ router = Router()
 async def cmd_admin(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
-        "👑 <b>Admin panel</b>\n\n"
-        "📊 Statistika — konkurs raqamlari\n"
-        "⚙️ Sozlamalar — joriy sozlamalar\n"
-        "▶️ Boshlash / ⏹ To'xtatish — konkurs holati\n"
-        "🏆 Natijalar — g'oliblarni tanlash\n"
-        "📋 Kanallar ro'yxati — majburiy obunalar\n"
-        "➕ Kanal qo'shish — ommaviy kanal qo'shish\n"
-        "🗑 Kanal o'chirish — ommaviy kanal o'chirish\n"
-        "🔐 Zayafka qo'shish — zayafka kanal qo'shish\n"
-        "❎ Zayafka o'chirish — zayafka kanal o'chirish\n"
-        "🔧 Guruh/Kanal sozlash — guruh va kanal ID larini o'rnatish",
+        "👑 <b>Admin panel</b>\n\nQaysi amalni bajarmoqchisiz?",
         reply_markup=get_admin_reply_keyboard(),
     )
 

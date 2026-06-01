@@ -18,7 +18,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from config import Config
 from database.connection import Database
 from database.models import init_db
-from handlers import admin_router, user_router
+from handlers import admin_router, group_router, user_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -94,6 +94,7 @@ async def main() -> None:
     dp["db"] = db
     dp["bot_username"] = bot_username
 
+    dp.include_router(group_router)
     dp.include_router(user_router)
     dp.include_router(admin_router)
 

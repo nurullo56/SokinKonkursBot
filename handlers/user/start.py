@@ -322,6 +322,12 @@ async def check_subscription_callback(callback: CallbackQuery, db: Database, bot
                     f"🎫 Sizning konkurs raqamingiz: <b>{contest_number}</b>\n\n"
                     "📣 Konkurs natijalari kanalda e'lon qilinadi. Kanallardan chiqib ketmang!",
                 )
+                result = await db.execute(
+                    "UPDATE users SET welcomed = TRUE WHERE user_id = ? AND welcomed = FALSE", (user_id,)
+                )
+                await db.commit()
+                if result.rowcount > 0:
+                    await _notify_admins(db, bot, callback.from_user)
             else:
                 await callback.message.edit_text(
                     f"{ce('✅')} Ajoyib! Siz barcha kanallarga obuna bo'ldingiz.\n\n"

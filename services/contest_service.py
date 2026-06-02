@@ -10,9 +10,9 @@ class ContestService:
         self.db = db
 
     async def generate_contest_number(self) -> Optional[int]:
-        """Pick a random unique number in [1, 10000]."""
-        for _ in range(20):
-            number = random.randint(1, 10000)
+        """Pick a random unique number in [100000, 999999]."""
+        for _ in range(100):
+            number = random.randint(100000, 999999)
             row = await self.db.fetchone(
                 "SELECT 1 FROM users WHERE contest_number = ?", (number,)
             )

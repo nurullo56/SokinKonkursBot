@@ -1,4 +1,5 @@
 from typing import Any, Awaitable, Callable
+import time
 
 from aiogram import BaseMiddleware, Bot
 from aiogram.enums import ChatType
@@ -10,6 +11,10 @@ from services.subscription_service import SubscriptionService
 
 
 class SubscriptionMiddleware(BaseMiddleware):
+    # Class-level cache: {user_id: (is_subscribed, expires_at)}
+    _cache: dict[int, tuple[bool, float]] = {}
+    _CACHE_TTL = 60.0  # kesh muddati - 60 soniya
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
@@ -56,12 +61,24 @@ class SubscriptionMiddleware(BaseMiddleware):
         if isinstance(event, CallbackQuery) and event.data == "check_subscription":
             return await handler(event, data)
 
+        # Keshni tekshirish
+        user_id = from_user.id
+        now = time.time()
+        if user_id in self._cache:
+            is_sub, expires = self._cache[user_id]
+            if now < expires and is_sub:
+                return await handler(event, data)
+
         sub_svc = SubscriptionService(db, bot)
-        unsubscribed = await sub_svc.get_unsubscribed(from_user.id)
+        unsubscribed = await sub_svc.get_unsubscribed(user_id)
 
         if not unsubscribed:
+            # Obuna muvaffaqiyatli o'tgan bo'lsa keshga yozamiz
+            self._cache[user_id] = (True, now + self._CACHE_TTL)
             return await handler(event, data)
 
+        # Obunadan chiqqan bo'lsa keshdan o'chirib tashlaymiz
+        self._cache.pop(user_id, None)
         text = sub_svc.build_prompt_text(unsubscribed)
         keyboard = get_subscription_keyboard(unsubscribed)
 

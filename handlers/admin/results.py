@@ -72,7 +72,7 @@ async def cmd_results(message: Message, state: FSMContext, db: Database, bot: Bo
     verified_users = await db.fetchall(
         "SELECT user_id, contest_number, first_name, username, referral_count "
         "FROM users WHERE verified = TRUE "
-        "ORDER BY referral_count DESC"
+        "ORDER BY RANDOM()"
     )
     if len(verified_users) < 5:
         await message.answer(

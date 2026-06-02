@@ -44,3 +44,6 @@ class QueueMiddleware(BaseMiddleware):
         async with self._global:
             async with lock:
                 return await handler(event, data)
+        # Lock bo'shatilgandan keyin, hech kim kutmayotgan bo'lsa o'chiramiz
+        if not getattr(lock, "_waiters", None):
+            self._user_locks.pop(user_id, None)

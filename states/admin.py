@@ -31,5 +31,6 @@ class BroadcastFlow(StatesGroup):
 
 
 class ResultsFlow(StatesGroup):
+    waiting_count = State()
     waiting_reply_link = State()
     confirm = State()

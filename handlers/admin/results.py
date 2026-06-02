@@ -19,13 +19,24 @@ _PLACE_EMOJIS = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
 
 BTN_CONFIRM_SEND = "✅ Ha, kanalga yuborish"
 BTN_SKIP_LINK    = "➡️ Havola siz, oddiy yuborish"
+BTN_4_WINNERS    = "4️⃣ 4 ta g'olib"
+BTN_5_WINNERS    = "5️⃣ 5 ta g'olib"
+
+
+def get_count_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_4_WINNERS), KeyboardButton(text=BTN_5_WINNERS)],
+            [KeyboardButton(text=BTN_CANCEL)],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def get_confirm_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=BTN_CONFIRM_SEND)],
-            [KeyboardButton(text=BTN_SKIP_LINK)],
             [KeyboardButton(text=BTN_CANCEL)],
         ],
         resize_keyboard=True,
@@ -43,12 +54,9 @@ def get_link_keyboard() -> ReplyKeyboardMarkup:
 
 
 def _parse_message_link(link: str) -> tuple[str | int | None, int | None]:
-    """Parse t.me link → (chat_id_or_username, message_id)."""
-    # https://t.me/c/1234567890/99  (private)
     m = re.match(r"https?://t\.me/c/(\d+)/(\d+)", link)
     if m:
         return int("-100" + m.group(1)), int(m.group(2))
-    # https://t.me/username/99  (public)
     m = re.match(r"https?://t\.me/(\w+)/(\d+)", link)
     if m:
         return "@" + m.group(1), int(m.group(2))
@@ -56,47 +64,75 @@ def _parse_message_link(link: str) -> tuple[str | int | None, int | None]:
 
 
 @router.message(or_f(Command("results"), F.text == BTN_RESULTS))
-async def cmd_results(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+async def cmd_results(message: Message, state: FSMContext, db: Database) -> None:
     channel_id_str = await db.get_setting("channel_id")
     if not channel_id_str:
         await message.answer("❌ Kanal ID belgilanmagan.")
         return
     try:
-        channel_id = int(channel_id_str)
+        int(channel_id_str)
     except ValueError:
         await message.answer("❌ Kanal ID noto'g'ri formatda.")
         return
 
-    await message.answer("⏳ G'oliblar tanlanmoqda, iltimos kuting...")
+    await state.set_state(ResultsFlow.waiting_count)
+    await message.answer(
+        "🏆 <b>Natijalar</b>\n\nNechta g'olib tanlansin?",
+        reply_markup=get_count_keyboard(),
+    )
+
+
+@router.message(ResultsFlow.waiting_count)
+async def results_get_count(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    if message.text == BTN_4_WINNERS:
+        count = 4
+    elif message.text == BTN_5_WINNERS:
+        count = 5
+    else:
+        await message.answer("Iltimos tugmalardan birini tanlang:", reply_markup=get_count_keyboard())
+        return
+
+    channel_id_str = await db.get_setting("channel_id")
+    channel_id = int(channel_id_str)
+
+    await message.answer(f"⏳ {count} ta g'olib tanlanmoqda...")
 
     verified_users = await db.fetchall(
         "SELECT user_id, contest_number, first_name, username, referral_count "
         "FROM users WHERE verified = TRUE "
         "ORDER BY RANDOM()"
     )
-    if len(verified_users) < 5:
+    if len(verified_users) < count:
+        await state.clear()
         await message.answer(
-            f"❌ Tasdiqlangan ishtirokchilar soni kamida 5 ta bo'lishi kerak. "
-            f"Hozirda: {len(verified_users)} ta"
+            f"❌ Tasdiqlangan ishtirokchilar kamida {count} ta bo'lishi kerak. "
+            f"Hozirda: {len(verified_users)} ta",
+            reply_markup=get_admin_reply_keyboard(),
         )
         return
 
     verification_svc = VerificationService(db, bot)
-
     winners: list[dict] = []
     skipped = 0
     for user in verified_users:
-        if len(winners) >= 5:
+        if len(winners) >= count:
             break
         if await verification_svc.check_user_in_bot(user["user_id"]):
             winners.append(user)
         else:
             skipped += 1
 
-    if len(winners) < 5:
+    if len(winners) < count:
+        await state.clear()
         await message.answer(
             f"❌ Yetarli faol ishtirokchi yo'q.\n"
-            f"Faol: {len(winners)}, bloklagan/ketgan: {skipped}"
+            f"Faol: {len(winners)}, bloklagan/ketgan: {skipped}",
+            reply_markup=get_admin_reply_keyboard(),
         )
         return
 
@@ -140,10 +176,8 @@ async def results_get_link(message: Message, state: FSMContext) -> None:
 
     await state.update_data(reply_chat=str(reply_chat) if reply_chat else None, reply_msg_id=reply_msg_id)
     await state.set_state(ResultsFlow.confirm)
-
-    data = await state.get_data()
     await message.answer(
-        f"⚠️ Kanalga yuborilsinmi?",
+        "⚠️ Kanalga yuborilsinmi?",
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text=BTN_CONFIRM_SEND)], [KeyboardButton(text=BTN_CANCEL)]],
             resize_keyboard=True,
@@ -173,7 +207,6 @@ async def confirm_results(message: Message, state: FSMContext, db: Database, bot
 
     try:
         if reply_chat and reply_msg_id:
-            # reply_chat could be "@username" or "-100xxxxxxxx"
             chat = int(reply_chat) if reply_chat.lstrip("-").isdigit() else reply_chat
             await bot.send_message(chat, result_text, reply_to_message_id=reply_msg_id)
         else:

@@ -1,13 +1,6 @@
-import asyncio
-import json
-import os
-
 from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
-
-EMOJI_JSON = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "custom_emojis.json"))
-_emoji_write_lock = asyncio.Lock()
 
 from database.connection import Database
 from utils.emoji import ce, reload as reload_emojis, _CE
@@ -138,30 +131,6 @@ async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str
         await _notify_referrer(db, bot, message.from_user)
 
 
-@router.message(F.entities.func(lambda ents: any(e.type == "custom_emoji" for e in ents)))
-async def catch_custom_emoji(message: Message) -> None:
-    found = {
-        message.text[e.offset:e.offset + e.length]: e.custom_emoji_id
-        for e in (message.entities or [])
-        if e.type == "custom_emoji"
-    }
-    if not found:
-        return
-
-    async with _emoji_write_lock:
-        data: dict = {}
-        if os.path.exists(EMOJI_JSON):
-            with open(EMOJI_JSON, encoding="utf-8") as f:
-                data = json.load(f)
-        data.update(found)
-        with open(EMOJI_JSON, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        reload_emojis()
-
-    lines = [f"{emoji}  =>  {eid}" for emoji, eid in found.items()]
-    await message.reply(
-        f"{ce('✅')} Saqlandi! ({len(found)} ta)\n\n" + "\n".join(lines)
-    )
 
 
 @router.message(CommandStart())

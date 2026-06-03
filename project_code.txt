@@ -1,0 +1,3066 @@
+LOYIHA STRUKTURASI
+============================================================
+SokinKonkursBot/
+    ├── .dockerignore
+    ├── .env
+    ├── .gitattributes
+    ├── .gitignore
+    ├── Dockerfile
+    ├── config.py
+    ├── contest.db
+    ├── contest.db-shm
+    ├── contest.db-wal
+    ├── custom_emojis.json
+    ├── deploy.py
+    ├── docker-compose.yml
+    ├── main.py
+    ├── requirements.txt
+    ├── size_checker.py
+    ├── tree.py
+database/
+    ├── __init__.py
+    ├── connection.py
+    ├── models.py
+handlers/
+    ├── __init__.py
+    ├── admin/
+        ├── __init__.py
+        ├── broadcast.py
+        ├── channels.py
+        ├── panel.py
+        ├── results.py
+        ├── settings.py
+    ├── user/
+        ├── __init__.py
+        ├── group_handlers.py
+        ├── join_request.py
+        ├── start.py
+        ├── statistics.py
+keyboards/
+    ├── __init__.py
+    ├── admin_kb.py
+    ├── user_kb.py
+middlewares/
+    ├── __init__.py
+    ├── admin_middleware.py
+    ├── anti_flood.py
+    ├── queue_middleware.py
+    ├── subscription_middleware.py
+nginx/
+    ├── nginx.conf
+services/
+    ├── __init__.py
+    ├── contest_service.py
+    ├── referral_service.py
+    ├── subscription_service.py
+    ├── verification_service.py
+states/
+    ├── __init__.py
+    ├── admin.py
+utils/
+    ├── __init__.py
+    ├── emoji.py
+
+
+============================================================
+FAYLLAR MAZMUNI
+============================================================
+
+============================================================
+FILE: Dockerfile
+============================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["python", "main.py"]
+
+
+============================================================
+FILE: config.py
+============================================================
+from dataclasses import dataclass, field
+from typing import List
+
+
+@dataclass
+class Config:
+    bot_token: str = ""
+    admin_ids: List[int] = field(default_factory=list)
+    db_path: str = "contest.db"
+
+
+============================================================
+FILE: custom_emojis.json
+============================================================
+{
+  "🎯": "5310278924616356636",
+  "🎉": "5461151367559141950",
+  "👥": "5372926953978341366",
+  "✅": "5458446268307097114",
+  "📌": "5397782960512444700",
+  "🔗": "5271974997521350631",
+  "📊": "5458905456145612048",
+  "1️⃣": "5382322671679708881",
+  "2️⃣": "5381990043642502553",
+  "3️⃣": "5381879959335738545",
+  "4️⃣": "5382054253403577563",
+  "5️⃣": "5391197405553107640",
+  "📃": "5271628569754222702",
+  "⌛": "5386367538735104399",
+  "📱": "5458729521400265551",
+  "🔔": "5458603043203327669"
+}
+
+============================================================
+FILE: deploy.py
+============================================================
+import paramiko, socket, time, sys, io
+
+HOST = "78.46.204.144"
+USER = "root"
+PASS = "74n7sqnUpXHT"
+
+SCRIPT = b"""#!/bin/bash
+set -e
+
+echo "=== 1/5 Docker tekshirish ==="
+if ! command -v docker &>/dev/null; then
+    echo "Docker o'rnatilmoqda..."
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable --now docker
+else
+    docker --version
+fi
+
+if ! docker compose version &>/dev/null 2>&1; then
+    apt-get install -y docker-compose-plugin 2>&1 | tail -5
+fi
+docker compose version
+
+echo "=== 2/5 Git clone/pull ==="
+cd /opt
+if [ -d SokinKonkursBot/.git ]; then
+    cd SokinKonkursBot && git pull
+else
+    rm -rf SokinKonkursBot
+    git clone https://github.com/nurullo56/SokinKonkursBot.git
+    cd SokinKonkursBot
+fi
+
+echo "=== 3/5 .env yaratish ==="
+cat > .env << ENVEOF
+BOT_TOKEN=8912369103:AAHzlMks9Zm5Dgbq_QiDmWJ3wmcSi1_NtxM
+ADMIN_IDS=7293959501,8355108528
+WEBHOOK_HOST=https://smart-tools.uk
+WEBHOOK_PORT=8080
+REDIS_URL=redis://redis:6379/0
+ENVEOF
+echo ".env tayyor"
+
+echo "=== 4/5 Docker build & up ==="
+docker compose down --remove-orphans 2>/dev/null || true
+docker compose up -d --build
+
+echo "=== 5/5 Holat ==="
+sleep 3
+docker compose ps
+docker compose logs --tail=20 bot
+
+echo ""
+echo "=============================="
+echo "  DEPLOY MUVAFFAQIYATLI!"
+echo "=============================="
+"""
+
+def connect_transport():
+    sock = socket.create_connection((HOST, 22), timeout=20)
+    t = paramiko.Transport(sock)
+    t.connect(username=USER, password=PASS)
+    return sock, t
+
+print("Serverga ulanilmoqda...")
+sock, transport = connect_transport()
+
+# SFTP orqali script yuklash
+print("Script yuklanmoqda...")
+sftp = paramiko.SFTPClient.from_transport(transport)
+sftp.putfo(io.BytesIO(SCRIPT), "/tmp/deploy.sh")
+sftp.chmod("/tmp/deploy.sh", 0o755)
+sftp.close()
+transport.close()
+sock.close()
+print("Script yuklandi. Deploy boshlanmoqda...\n")
+
+# Yangi session bilan script ishga tushirish
+sock2, transport2 = connect_transport()
+chan = transport2.open_session()
+chan.get_pty(width=200)
+chan.exec_command("bash /tmp/deploy.sh 2>&1")
+
+while True:
+    if chan.recv_ready():
+        chunk = chan.recv(4096)
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.flush()
+    if chan.exit_status_ready():
+        while chan.recv_ready():
+            sys.stdout.buffer.write(chan.recv(4096))
+        sys.stdout.flush()
+        break
+    time.sleep(0.05)
+
+code = chan.recv_exit_status()
+chan.close()
+transport2.close()
+sock2.close()
+
+print(f"\nExit code: {code}")
+
+
+============================================================
+FILE: docker-compose.yml
+============================================================
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    network_mode: host
+    environment:
+      - REDIS_URL=redis://localhost:6379/0
+    volumes:
+      - ./contest.db:/app/contest.db
+      - ./custom_emojis.json:/app/custom_emojis.json
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
+
+
+============================================================
+FILE: main.py
+============================================================
+import asyncio
+import logging
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from aiohttp import web
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import BotCommand, BotCommandScopeChat, BotCommandScopeDefault
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+
+from config import Config
+from database.connection import Database
+from database.models import init_db
+from handlers import admin_router, group_router, user_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+async def _bootstrap_settings(db: Database) -> None:
+    """Seed BOT_TOKEN and ADMIN_IDS from environment if not already in the DB."""
+    env_token = os.getenv("BOT_TOKEN", "").strip()
+    if env_token and not await db.get_setting("bot_token"):
+        await db.set_setting("bot_token", env_token)
+        logger.info("BOT_TOKEN loaded from environment.")
+
+    env_admins = os.getenv("ADMIN_IDS", "").strip()
+    if env_admins:
+        await db.set_setting("admin_ids", env_admins)
+        logger.info("ADMIN_IDS loaded from environment: %s", env_admins)
+
+
+async def _setup_commands(bot: Bot, admin_ids: list[int]) -> None:
+    user_commands = [
+        BotCommand(command="start", description="Botni ishga tushirish"),
+    ]
+    admin_commands = [
+        BotCommand(command="start", description="Botni ishga tushirish"),
+        BotCommand(command="admin", description="Admin panel"),
+    ]
+
+    await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+
+    for admin_id in admin_ids:
+        try:
+            await bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
+        except Exception as e:
+            logger.warning("Could not set commands for admin %s: %s", admin_id, e)
+
+
+async def main() -> None:
+    config = Config()
+    db = Database(config.db_path)
+    await db.connect()
+    await init_db(db)
+    await _bootstrap_settings(db)
+
+    token = await db.get_setting("bot_token")
+    if not token:
+        logger.error(
+            "BOT_TOKEN is not configured. "
+            "Set the BOT_TOKEN environment variable or insert it into the settings table."
+        )
+        await db.disconnect()
+        return
+
+    bot = Bot(
+        token=token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+
+    bot_info = await bot.get_me()
+    bot_username: str = bot_info.username
+
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        storage = RedisStorage.from_url(redis_url)
+        logger.info("RedisStorage connected: %s", redis_url)
+    except Exception as e:
+        logger.warning("Redis ulanmadi, MemoryStorage ishlatiladi: %s", e)
+        storage = MemoryStorage()
+
+    dp = Dispatcher(storage=storage)
+    dp["db"] = db
+    dp["bot_username"] = bot_username
+
+    dp.include_router(group_router)
+    dp.include_router(user_router)
+    dp.include_router(admin_router)
+
+    admin_ids_str = await db.get_setting("admin_ids") or ""
+    admin_ids = [
+        int(x.strip()) for x in admin_ids_str.split(",") if x.strip().lstrip("-").isdigit()
+    ]
+    await _setup_commands(bot, admin_ids)
+
+    webhook_host = os.getenv("WEBHOOK_HOST", "").strip().rstrip("/")
+
+    if webhook_host:
+        webhook_path = f"/webhook/{token}"
+        webhook_url = f"{webhook_host}{webhook_path}"
+        port = int(os.getenv("WEBHOOK_PORT", "8080"))
+
+        await bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=["message", "callback_query", "chat_join_request"],
+            drop_pending_updates=True,
+        )
+        logger.info("Webhook set: %s", webhook_url)
+
+        app = web.Application()
+        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
+        setup_application(app, dp, bot=bot)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+
+        logger.info("Bot @%s webhook mode, port %s", bot_username, port)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await runner.cleanup()
+            await bot.delete_webhook()
+            await db.disconnect()
+            await bot.session.close()
+    else:
+        logger.info("Bot @%s polling mode", bot_username)
+        try:
+            await dp.start_polling(bot, allowed_updates=["message", "callback_query", "chat_join_request"])
+        finally:
+            await db.disconnect()
+            await bot.session.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+============================================================
+FILE: requirements.txt
+============================================================
+aiogram>=3.0.0,<4.0.0
+aiosqlite>=0.19.0
+python-dotenv>=1.0.0
+redis[asyncio]>=5.0.0
+
+
+============================================================
+FILE: size_checker.py
+============================================================
+import os
+
+def get_dir_size(start_path='.', ignore_folders=None):
+    if ignore_folders is None:
+        # Hisobga olinmaydigan keraksiz kesh yoki muhit papkalari
+        ignore_folders = ['__pycache__', '.git', '.venv', '.idea', '.vscode']
+        
+    total_size = 0
+    file_count = 0
+
+    for dirpath, dirnames, filenames in os.walk(start_path):
+        # Keraksiz papkalarni chetlab o'tamiz
+        dirnames[:] = [d for d in dirnames if d not in ignore_folders]
+        
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            # Simvolik ssilka bo'lmasa, hajmini qo'shamiz
+            if not os.path.islink(fp):
+                try:
+                    total_size += os.path.getsize(fp)
+                    file_count += 1
+                except FileNotFoundError:
+                    continue
+
+    # Baytdan Megabaytga o'tkazamiz
+    size_in_mb = total_size / (1024 * 1024)
+    return size_in_mb, file_count
+
+if __name__ == "__main__":
+    print("⏳ Loyiha hajmi hisoblanmoqda...")
+    
+    # Keshlar bilan va keshlasiz hajmini solishtiramiz
+    mb_clean, files_clean = get_dir_size()
+    mb_full, files_full = get_dir_size(ignore_folders=[]) # hammasini hisoblaydi
+    
+    print("\n" + "="*35)
+    print(f"📊 LOYIHA STATISTIKASI:")
+    print("="*35)
+    print(f"📁 Toza kod hajmi:        {mb_clean:.2f} MB ({files_clean} ta fayl)")
+    print(f"📦 Umumiy hajm (keshlar b-n): {mb_full:.2f} MB ({files_full} ta fayl)")
+    print(f"🧹 Keshlar egallagan joy:   {(mb_full - mb_clean):.2f} MB")
+    print("="*35)
+
+============================================================
+FILE: tree.py
+============================================================
+import os
+
+SKIP = {"__pycache__", ".git", ".venv", "venv", ".idea", "node_modules"}
+SKIP_FILES = {".pyc", ".pyo", ".pyd"}
+
+def tree(path, prefix=""):
+    entries = sorted(os.listdir(path))
+    entries = [e for e in entries if e not in SKIP]
+    for i, name in enumerate(entries):
+        full = os.path.join(path, name)
+        connector = "+-- " if i == len(entries) - 1 else "|-- "
+        print(prefix + connector + name)
+        if os.path.isdir(full):
+            extension = "    " if i == len(entries) - 1 else "|   "
+            tree(full, prefix + extension)
+
+root = os.path.dirname(os.path.abspath(__file__))
+print(os.path.basename(root) + "/")
+tree(root)
+
+
+============================================================
+FILE: database\__init__.py
+============================================================
+from database.connection import Database
+from database.models import init_db
+
+__all__ = ["Database", "init_db"]
+
+
+============================================================
+FILE: database\connection.py
+============================================================
+import aiosqlite
+from typing import Optional
+
+
+class Database:
+    def __init__(self, db_path: str) -> None:
+        self.db_path = db_path
+        self._conn: Optional[aiosqlite.Connection] = None
+
+    async def connect(self) -> None:
+        self._conn = await aiosqlite.connect(self.db_path)
+        self._conn.row_factory = aiosqlite.Row
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA foreign_keys=ON")
+
+    async def disconnect(self) -> None:
+        if self._conn:
+            await self._conn.close()
+            self._conn = None
+
+    def _require_connection(self) -> aiosqlite.Connection:
+        if self._conn is None:
+            raise RuntimeError("Database ulanmagan. connect() ni avval chaqiring.")
+        return self._conn
+
+    async def execute(self, query: str, params: tuple = ()) -> aiosqlite.Cursor:
+        return await self._require_connection().execute(query, params)
+
+    async def fetchone(self, query: str, params: tuple = ()) -> Optional[dict]:
+        async with await self._require_connection().execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def fetchall(self, query: str, params: tuple = ()) -> list[dict]:
+        async with await self._require_connection().execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def commit(self) -> None:
+        await self._require_connection().commit()
+
+    async def get_setting(self, key: str) -> Optional[str]:
+        row = await self.fetchone(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        )
+        return row["value"] if row else None
+
+    async def set_setting(self, key: str, value: str) -> None:
+        await self.execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+            "VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (key, value),
+        )
+        await self.commit()
+
+
+============================================================
+FILE: database\models.py
+============================================================
+
+from database.connection import Database
+
+_SQL_USERS = """
+CREATE TABLE IF NOT EXISTS users (
+    user_id         INTEGER PRIMARY KEY,
+    username        TEXT,
+    first_name      TEXT,
+    phone           TEXT,
+    referral_count  INTEGER DEFAULT 0,
+    contest_number  INTEGER UNIQUE,
+    participated    BOOLEAN DEFAULT FALSE,
+    verified        BOOLEAN DEFAULT FALSE,
+    welcomed        BOOLEAN DEFAULT FALSE,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_SQL_REFERRALS = """
+CREATE TABLE IF NOT EXISTS referrals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    referrer_id INTEGER NOT NULL,
+    referred_id INTEGER NOT NULL,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referrer_id) REFERENCES users(user_id),
+    FOREIGN KEY (referred_id) REFERENCES users(user_id),
+    UNIQUE(referrer_id, referred_id)
+)
+"""
+
+_SQL_SETTINGS = """
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_SQL_WINNERS = """
+CREATE TABLE IF NOT EXISTS winners (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    place          INTEGER NOT NULL,
+    contest_number INTEGER NOT NULL,
+    announced_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_SQL_PUBLIC_CHANNELS = """
+CREATE TABLE IF NOT EXISTS public_channels (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id   TEXT NOT NULL UNIQUE,
+    channel_name TEXT,
+    channel_link TEXT,
+    member_limit INTEGER DEFAULT 0,
+    joined_count INTEGER DEFAULT 0,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_SQL_ZAYAFKA_CHANNELS = """
+CREATE TABLE IF NOT EXISTS zayafka_channels (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id   TEXT NOT NULL UNIQUE,
+    channel_name TEXT,
+    invite_link  TEXT,
+    member_limit INTEGER DEFAULT 0,
+    joined_count INTEGER DEFAULT 0,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_SQL_ZAYAFKA_REQUESTS = """
+CREATE TABLE IF NOT EXISTS zayafka_join_requests (
+    user_id    INTEGER NOT NULL,
+    channel_id TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, channel_id)
+)
+"""
+
+_SQL_CHANNEL_JOINS = """
+CREATE TABLE IF NOT EXISTS channel_joins (
+    user_id     INTEGER NOT NULL,
+    channel_id  TEXT NOT NULL,
+    joined_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, channel_id)
+)
+"""
+
+
+async def init_db(db: Database) -> None:
+    for sql in (
+        _SQL_USERS,
+        _SQL_REFERRALS,
+        _SQL_SETTINGS,
+        _SQL_WINNERS,
+        _SQL_PUBLIC_CHANNELS,
+        _SQL_ZAYAFKA_CHANNELS,
+        _SQL_ZAYAFKA_REQUESTS,
+        _SQL_CHANNEL_JOINS,
+    ):
+        await db.execute(sql)
+    
+    # Safe migrations for existing databases
+    try:
+        await db.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE users ADD COLUMN welcomed BOOLEAN DEFAULT FALSE")
+    except Exception:
+        pass
+
+    for table in ("public_channels", "zayafka_channels"):
+        try:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN member_limit INTEGER DEFAULT 0")
+        except Exception:
+            pass  # Already exists
+        try:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN joined_count INTEGER DEFAULT 0")
+        except Exception:
+            pass  # Already exists
+
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)"
+    )
+    # UNIQUE constraint on referred_id: har bir user faqat bir marta referal bo'lishi mumkin
+    # Bu INSERT OR IGNORE + rowcount check bilan race condition ni oldini oladi
+    try:
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_referrals_referred_unique ON referrals(referred_id)"
+        )
+    except Exception:
+        pass
+    await db.commit()
+
+
+============================================================
+FILE: handlers\__init__.py
+============================================================
+from handlers.admin import admin_router
+from handlers.user import group_router, user_router
+
+__all__ = ["user_router", "admin_router", "group_router"]
+
+
+============================================================
+FILE: handlers\admin\__init__.py
+============================================================
+from aiogram import F, Router
+from aiogram.enums import ChatType
+
+from handlers.admin.channels import router as channels_router
+from handlers.admin.panel import router as panel_router
+from handlers.admin.results import router as results_router
+from handlers.admin.settings import router as settings_router
+from handlers.admin.broadcast import router as broadcast_router
+from middlewares.admin_middleware import AdminMiddleware
+from middlewares.anti_flood import AntiFloodMiddleware
+
+admin_router = Router()
+
+admin_router.message.filter(F.chat.type == ChatType.PRIVATE)
+admin_router.message.middleware(AntiFloodMiddleware(limit=5, window=3.0))
+admin_router.message.middleware(AdminMiddleware())
+admin_router.callback_query.middleware(AdminMiddleware())
+
+admin_router.include_router(panel_router)
+admin_router.include_router(settings_router)
+admin_router.include_router(results_router)
+admin_router.include_router(channels_router)
+admin_router.include_router(broadcast_router)
+
+__all__ = ["admin_router"]
+
+============================================================
+FILE: handlers\admin\broadcast.py
+============================================================
+import asyncio
+import logging
+from aiogram import F, Router
+from aiogram.filters import Command, StateFilter, or_f
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.exceptions import TelegramForbiddenError, TelegramAPIError
+
+from database.connection import Database
+from keyboards.admin_kb import (
+    BTN_BROADCAST,
+    BTN_CANCEL,
+    get_admin_reply_keyboard,
+    get_cancel_keyboard,
+)
+from states.admin import BroadcastFlow
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+BTN_CONFIRM = "✅ Tasdiqlash"
+
+def get_confirm_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_CONFIRM)],
+            [KeyboardButton(text=BTN_CANCEL)],
+        ],
+        resize_keyboard=True,
+    )
+
+@router.message(or_f(F.text == BTN_BROADCAST, Command("broadcast")), StateFilter(None))
+async def cmd_broadcast(message: Message, state: FSMContext) -> None:
+    await state.set_state(BroadcastFlow.waiting_message)
+    await message.answer(
+        "📢 <b>Reklama tarqatish bo'limi</b>\n\n"
+        "Iltimos, foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yuboring.\n"
+        "Xabar matn, rasm, video yoki istalgan media ko'rinishida bo'lishi mumkin.",
+        reply_markup=get_cancel_keyboard()
+    )
+
+@router.message(BroadcastFlow.waiting_message)
+async def process_broadcast_message(message: Message, state: FSMContext) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    # Store the message ID and chat ID so we can copy it later
+    await state.update_data(
+        from_chat_id=message.chat.id,
+        message_id=message.message_id
+    )
+    
+    await state.set_state(BroadcastFlow.confirm_send)
+    await message.reply(
+        "❓ Ushbu xabarni barcha foydalanuvchilarga yuborishni tasdiqlaysizmi?",
+        reply_markup=get_confirm_keyboard()
+    )
+
+@router.message(BroadcastFlow.confirm_send)
+async def send_broadcast(message: Message, state: FSMContext, db: Database) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    if message.text != BTN_CONFIRM:
+        await message.answer("Iltimos, tasdiqlash uchun tugmalardan foydalaning:")
+        return
+
+    data = await state.get_data()
+    from_chat_id = data.get("from_chat_id")
+    message_id = data.get("message_id")
+    
+    await state.clear()
+    
+    if not from_chat_id or not message_id:
+        await message.answer("Xatolik yuz berdi. Qaytadan urinib ko'ring.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    # Fetch all users
+    users = await db.fetchall("SELECT user_id FROM users")
+    if not users:
+        await message.answer("Foydalanuvchilar topilmadi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    status_message = await message.answer(
+        f"⏳ Tarqatish boshlandi...\nJami foydalanuvchilar: {len(users)} ta.",
+        reply_markup=get_admin_reply_keyboard()
+    )
+
+    success = 0
+    failed = 0
+    blocked = 0
+
+    for i, user in enumerate(users):
+        user_id = user["user_id"]
+        try:
+            # Copy message to target user
+            await message.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=from_chat_id,
+                message_id=message_id
+            )
+            success += 1
+        except TelegramForbiddenError:
+            blocked += 1
+        except TelegramAPIError as e:
+            logger.error("Failed to send broadcast to %s: %s", user_id, e)
+            failed += 1
+        except Exception as e:
+            logger.error("Unexpected error in broadcast to %s: %s", user_id, e)
+            failed += 1
+
+        # Anti-spam delay to respect Telegram limits (30 msg/sec)
+        await asyncio.sleep(0.05)
+
+        # Progress update every 100 users
+        if (i + 1) % 100 == 0:
+            try:
+                await status_message.edit_text(
+                    f"⏳ Tarqatish jarayoni:\n\n"
+                    f"Yuborildi: {i + 1}/{len(users)}\n"
+                    f"Muvaffaqiyatli: {success}\n"
+                    f"Bloklanganlar: {blocked}\n"
+                    f"Xatoliklar: {failed}"
+                )
+            except Exception:
+                pass
+
+    await status_message.reply(
+        f"✅ <b>Reklama tarqatish yakunlandi!</b>\n\n"
+        f"📊 Statistika:\n"
+        f"• Jami a'zolar: {len(users)}\n"
+        f"• Yetkazildi: {success}\n"
+        f"• Bloklaganlar: {blocked}\n"
+        f"• Xatoliklar: {failed}"
+    )
+
+
+============================================================
+FILE: handlers\admin\channels.py
+============================================================
+import logging
+from html import escape
+
+from aiogram import Bot, F, Router
+from aiogram.filters import Command, StateFilter, or_f
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
+
+from database.connection import Database
+from keyboards.admin_kb import (
+    BTN_ADD_PUBLIC,
+    BTN_ADD_ZAYAFKA,
+    BTN_CANCEL,
+    BTN_CHANNELS,
+    BTN_DEL_PUBLIC,
+    BTN_DEL_ZAYAFKA,
+    get_admin_reply_keyboard,
+    get_cancel_keyboard,
+)
+from services.subscription_service import SubscriptionService
+from states.admin import AddPublicFlow, AddZayafkaFlow, DelPublicFlow, DelZayafkaFlow
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+
+_ALL_CHANNEL_STATES = StateFilter(
+    AddPublicFlow, AddZayafkaFlow, DelPublicFlow, DelZayafkaFlow
+)
+
+
+# ── Universal cancel handler (covers all channel FSM states) ─────────────────
+
+@router.message(F.text == BTN_CANCEL, _ALL_CHANNEL_STATES)
+async def fsm_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+
+
+# ── 📋 Kanallar ro'yxati ─────────────────────────────────────────────────────
+
+@router.message(or_f(Command("channels"), F.text == BTN_CHANNELS))
+async def cmd_channels(message: Message, db: Database, bot: Bot) -> None:
+    svc = SubscriptionService(db, bot)
+    public = await svc.get_public_channels()
+    zayafka = await svc.get_zayafka_channels()
+
+    if not public and not zayafka:
+        await message.answer(
+            "📭 Hech qanday majburiy obuna kanali yo'q.\n\n"
+            "➕ Kanal qo'shish yoki 🔐 Zayafka qo'shish tugmalarini bosing."
+        )
+        return
+
+    lines = ["📋 <b>Majburiy obuna kanallari:</b>\n"]
+    if public:
+        lines.append(f"📢 Ommaviy ({len(public)} ta):")
+        for ch in public:
+            name = escape(ch["channel_name"] or ch["channel_id"])
+            cid = escape(ch["channel_id"])
+            link = ch.get("channel_link") or ""
+            limit = ch.get("member_limit", 0) or 0
+            joined = ch.get("joined_count", 0) or 0
+            limit_str = f" [<b>{joined}/{limit} ta</b>]" if limit > 0 else " [Cheksiz]"
+            entry = f'<a href="{link}">{name}</a>' if link else name
+            lines.append(f"  • {entry}  <code>{cid}</code>{limit_str}")
+
+    if zayafka:
+        if public:
+            lines.append("")
+        lines.append(f"🔐 Zayafka ({len(zayafka)} ta):")
+        for ch in zayafka:
+            name = escape(ch["channel_name"] or ch["channel_id"])
+            cid = escape(ch["channel_id"])
+            link = ch.get("invite_link") or ""
+            limit = ch.get("member_limit", 0) or 0
+            joined = ch.get("joined_count", 0) or 0
+            limit_str = f" [<b>{joined}/{limit} ta</b>]" if limit > 0 else " [Cheksiz]"
+            entry = f'<a href="{link}">{name}</a>' if link else name
+            lines.append(f"  • {entry}  <code>{cid}</code>{limit_str}")
+
+    lines.append(f"\nJami: {len(public) + len(zayafka)} ta")
+    await message.answer("\n".join(lines))
+
+
+# ── ➕ Ommaviy kanal qo'shish ────────────────────────────────────────────────
+
+@router.message(or_f(Command("addpublic"), F.text == BTN_ADD_PUBLIC))
+async def cmd_add_public(message: Message, state: FSMContext) -> None:
+    await state.set_state(AddPublicFlow.waiting_channel_id)
+    await message.answer(
+        "📢 Ommaviy kanal username yoki ID kiriting:\n"
+        "Misol: <code>@mening_kanalim</code> yoki <code>-1001234567890</code>",
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(AddPublicFlow.waiting_channel_id)
+async def flow_add_public(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    channel_id = message.text.strip()
+    if not channel_id.startswith("@") and not channel_id.lstrip("-").isdigit():
+        await message.answer("❌ Noto'g'ri format. @ bilan boshlang yoki raqamli ID kiriting:")
+        return
+
+    channel_name = channel_id
+    channel_link = f"https://t.me/{channel_id.lstrip('@')}"
+    try:
+        chat = await bot.get_chat(channel_id)
+        channel_name = chat.title or channel_id
+        if chat.username:
+            channel_link = f"https://t.me/{chat.username}"
+    except Exception as e:
+        logger.warning("Could not fetch channel info %s: %s", channel_id, e)
+
+    await state.update_data(
+        channel_id=channel_id,
+        channel_name=channel_name,
+        channel_link=channel_link
+    )
+    await state.set_state(AddPublicFlow.waiting_limit)
+    await message.answer(
+        "📈 Ushbu kanal uchun obunachilar limitini kiriting (masalan: 1000).\n"
+        "Ushbu limitga yetganda bot kanalni majburiy obunadan avtomatik ravishda o'chiradi.\n"
+        "Limit qo'ymaslik uchun 0 kiriting:",
+        reply_markup=get_cancel_keyboard()
+    )
+
+
+@router.message(AddPublicFlow.waiting_limit)
+async def flow_add_public_limit(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    limit_str = message.text.strip()
+    if not limit_str.isdigit():
+        await message.answer("❌ Iltimos, faqat musbat raqam kiriting (masalan, 500 yoki 0):")
+        return
+
+    limit = int(limit_str)
+    data = await state.get_data()
+    channel_id = data["channel_id"]
+    channel_name = data["channel_name"]
+    channel_link = data["channel_link"]
+
+    await SubscriptionService(db, bot).add_public_channel(channel_id, channel_name, channel_link, member_limit=limit)
+    await state.clear()
+    
+    limit_info = f"Limit: <b>{limit} ta</b>" if limit > 0 else "Limit: <b>Yo'q (Cheksiz)</b>"
+    await message.answer(
+        f"✅ Ommaviy kanal qo'shildi:\n"
+        f"📢 <b>{escape(channel_name)}</b>  <code>{escape(channel_id)}</code>\n"
+        f"⚙️ {limit_info}",
+        reply_markup=get_admin_reply_keyboard(),
+    )
+
+
+# ── 🗑 Ommaviy kanal o'chirish ────────────────────────────────────────────────
+
+@router.message(or_f(Command("delpublic"), F.text == BTN_DEL_PUBLIC))
+async def cmd_del_public(message: Message, state: FSMContext) -> None:
+    await state.set_state(DelPublicFlow.waiting_channel_id)
+    await message.answer(
+        "🗑 O'chirmoqchi bo'lgan ommaviy kanal ID kiriting:\n"
+        "Misol: <code>@kanal</code> yoki <code>-1001234567890</code>",
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(DelPublicFlow.waiting_channel_id)
+async def flow_del_public(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    channel_id = message.text.strip()
+    removed = await SubscriptionService(db, bot).remove_public_channel(channel_id)
+    await state.clear()
+    if removed:
+        await message.answer(
+            f"✅ Ommaviy kanal o'chirildi: <code>{escape(channel_id)}</code>",
+            reply_markup=get_admin_reply_keyboard(),
+        )
+    else:
+        await message.answer(
+            f"❌ Ommaviy kanallar orasida topilmadi: <code>{escape(channel_id)}</code>",
+            reply_markup=get_admin_reply_keyboard(),
+        )
+
+
+# ── 🔐 Zayafka kanal qo'shish ────────────────────────────────────────────────
+
+@router.message(or_f(Command("addzayafka"), F.text == BTN_ADD_ZAYAFKA))
+async def cmd_add_zayafka(message: Message, state: FSMContext) -> None:
+    await state.set_state(AddZayafkaFlow.waiting_channel_id)
+    await message.answer(
+        "🔐 Zayafka kanal ID kiriting (raqamli):\n"
+        "Misol: <code>-1001234567890</code>",
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(AddZayafkaFlow.waiting_channel_id)
+async def flow_zayafka_id(message: Message, state: FSMContext) -> None:
+    channel_id = message.text.strip()
+    if not channel_id.lstrip("-").isdigit():
+        await message.answer("❌ Raqamli ID kiriting (masalan: <code>-1001234567890</code>):")
+        return
+    await state.update_data(channel_id=channel_id)
+    await state.set_state(AddZayafkaFlow.waiting_invite_link)
+    await message.answer(
+        "🔗 Taklif havolasini kiriting:\n"
+        "Misol: <code>https://t.me/+xxxxxxxx</code>"
+    )
+
+
+@router.message(AddZayafkaFlow.waiting_invite_link)
+async def flow_zayafka_link(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    invite_link = message.text.strip()
+    data = await state.get_data()
+    channel_id: str = data["channel_id"]
+
+    channel_name = channel_id
+    try:
+        chat = await bot.get_chat(int(channel_id))
+        channel_name = chat.title or channel_id
+    except Exception as e:
+        logger.warning("Could not fetch zayafka channel info %s: %s", channel_id, e)
+
+    await state.update_data(
+        channel_id=channel_id,
+        channel_name=channel_name,
+        invite_link=invite_link
+    )
+    await state.set_state(AddZayafkaFlow.waiting_limit)
+    await message.answer(
+        "📈 Ushbu zayafka kanali uchun obunachilar limitini kiriting (masalan: 1000).\n"
+        "Limitga yetganda bot ushbu kanalni avtomatik ravishda majburiy obunadan o'chiradi.\n"
+        "Limit qo'ymaslik uchun 0 kiriting:",
+        reply_markup=get_cancel_keyboard()
+    )
+
+
+@router.message(AddZayafkaFlow.waiting_limit)
+async def flow_zayafka_limit(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    limit_str = message.text.strip()
+    if not limit_str.isdigit():
+        await message.answer("❌ Iltimos, faqat musbat raqam kiriting (masalan, 500 yoki 0):")
+        return
+
+    limit = int(limit_str)
+    data = await state.get_data()
+    channel_id = data["channel_id"]
+    channel_name = data["channel_name"]
+    invite_link = data["invite_link"]
+
+    await SubscriptionService(db, bot).add_zayafka_channel(channel_id, channel_name, invite_link, member_limit=limit)
+    await state.clear()
+    
+    limit_info = f"Limit: <b>{limit} ta</b>" if limit > 0 else "Limit: <b>Yo'q (Cheksiz)</b>"
+    await message.answer(
+        f"✅ Zayafka kanal qo'shildi:\n"
+        f"🔐 <b>{escape(channel_name)}</b>  <code>{escape(channel_id)}</code>\n"
+        f"⚙️ {limit_info}",
+        reply_markup=get_admin_reply_keyboard(),
+    )
+
+
+# ── ❎ Zayafka kanal o'chirish ─────────────────────────────────────────────────
+
+@router.message(or_f(Command("delzayafka"), F.text == BTN_DEL_ZAYAFKA))
+async def cmd_del_zayafka(message: Message, state: FSMContext) -> None:
+    await state.set_state(DelZayafkaFlow.waiting_channel_id)
+    await message.answer(
+        "❎ O'chirmoqchi bo'lgan zayafka kanal ID kiriting:\n"
+        "Misol: <code>-1001234567890</code>",
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(DelZayafkaFlow.waiting_channel_id)
+async def flow_del_zayafka(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    channel_id = message.text.strip()
+    removed = await SubscriptionService(db, bot).remove_zayafka_channel(channel_id)
+    await state.clear()
+    if removed:
+        await message.answer(
+            f"✅ Zayafka kanal o'chirildi: <code>{escape(channel_id)}</code>",
+            reply_markup=get_admin_reply_keyboard(),
+        )
+    else:
+        await message.answer(
+            f"❌ Zayafka kanallar orasida topilmadi: <code>{escape(channel_id)}</code>",
+            reply_markup=get_admin_reply_keyboard(),
+        )
+
+
+============================================================
+FILE: handlers\admin\panel.py
+============================================================
+import asyncio
+import json
+import os
+from html import escape
+
+from aiogram import F, Router
+from aiogram.enums import ChatType
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
+
+from keyboards.admin_kb import (
+    BTN_CANCEL,
+    BTN_CLOSE,
+    get_admin_keyboard_remove,
+    get_admin_reply_keyboard,
+)
+from utils.emoji import ce, reload as reload_emojis
+
+EMOJI_JSON = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "custom_emojis.json"))
+_emoji_write_lock = asyncio.Lock()
+
+router = Router()
+
+
+@router.message(Command("admin"))
+async def cmd_admin(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer(
+        "👑 <b>Admin panel</b>\n\nQaysi amalni bajarmoqchisiz?",
+        reply_markup=get_admin_reply_keyboard(),
+    )
+
+
+@router.message(F.text == BTN_CLOSE)
+async def btn_close(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Admin paneldan chiqdingiz.", reply_markup=get_admin_keyboard_remove())
+
+
+@router.message(F.text == BTN_CANCEL)
+async def btn_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+
+
+@router.message(F.forward_from_chat)
+async def get_forwarded_channel_id(message: Message) -> None:
+    chat = message.forward_from_chat
+    lines = [
+        "📋 <b>Kanal ma'lumotlari:</b>\n",
+        f"🆔 ID: <code>{chat.id}</code>",
+        f"📌 Nomi: <b>{escape(chat.title or 'N/A')}</b>",
+        f"📂 Turi: {chat.type}",
+    ]
+    if chat.username:
+        lines.append(f"🔗 Link: @{chat.username}")
+    lines.append("\n💡 ID ni nusxalab sozlamalarda foydalaning.")
+    await message.reply("\n".join(lines))
+
+
+# Faqat hech qanday FSM state bo'lmaganda custom emoji larni saqlaydi
+@router.message(
+    StateFilter(None),
+    F.entities.func(lambda ents: any(e.type == "custom_emoji" for e in ents))
+)
+async def catch_custom_emoji(message: Message) -> None:
+    found = {
+        message.text[e.offset:e.offset + e.length]: e.custom_emoji_id
+        for e in (message.entities or [])
+        if e.type == "custom_emoji"
+    }
+    if not found:
+        return
+
+    async with _emoji_write_lock:
+        data: dict = {}
+        if os.path.exists(EMOJI_JSON):
+            with open(EMOJI_JSON, encoding="utf-8") as f:
+                data = json.load(f)
+        data.update(found)
+        with open(EMOJI_JSON, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        reload_emojis()
+
+    lines = [f"{emoji}  =>  {eid}" for emoji, eid in found.items()]
+    await message.reply(
+        f"{ce('✅')} Saqlandi! ({len(found)} ta)\n\n" + "\n".join(lines)
+    )
+
+
+============================================================
+FILE: handlers\admin\results.py
+============================================================
+import json
+import logging
+import re
+
+from aiogram import Bot, F, Router
+from aiogram.filters import Command, or_f
+from aiogram.fsm.context import FSMContext
+from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+
+from database.connection import Database
+from keyboards.admin_kb import BTN_CANCEL, BTN_RESULTS, get_admin_reply_keyboard, get_cancel_keyboard
+from services.verification_service import VerificationService
+from states.admin import ResultsFlow
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+_PLACE_EMOJIS = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+
+BTN_CONFIRM_SEND = "✅ Ha, kanalga yuborish"
+BTN_SKIP_LINK    = "➡️ Havola siz, oddiy yuborish"
+BTN_4_WINNERS    = "4️⃣ 4 ta g'olib"
+BTN_5_WINNERS    = "5️⃣ 5 ta g'olib"
+
+
+def get_count_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_4_WINNERS), KeyboardButton(text=BTN_5_WINNERS)],
+            [KeyboardButton(text=BTN_CANCEL)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def get_confirm_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_CONFIRM_SEND)],
+            [KeyboardButton(text=BTN_CANCEL)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def get_link_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_SKIP_LINK)],
+            [KeyboardButton(text=BTN_CANCEL)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def _parse_message_link(link: str) -> tuple[str | int | None, int | None]:
+    m = re.match(r"https?://t\.me/c/(\d+)/(\d+)", link)
+    if m:
+        return int("-100" + m.group(1)), int(m.group(2))
+    m = re.match(r"https?://t\.me/(\w+)/(\d+)", link)
+    if m:
+        return "@" + m.group(1), int(m.group(2))
+    return None, None
+
+
+@router.message(or_f(Command("results"), F.text == BTN_RESULTS))
+async def cmd_results(message: Message, state: FSMContext, db: Database) -> None:
+    channel_id_str = await db.get_setting("channel_id")
+    if not channel_id_str:
+        await message.answer("❌ Kanal ID belgilanmagan.")
+        return
+    try:
+        int(channel_id_str)
+    except ValueError:
+        await message.answer("❌ Kanal ID noto'g'ri formatda.")
+        return
+
+    await state.set_state(ResultsFlow.waiting_count)
+    await message.answer(
+        "🏆 <b>Natijalar</b>\n\nNechta g'olib tanlansin?",
+        reply_markup=get_count_keyboard(),
+    )
+
+
+@router.message(ResultsFlow.waiting_count)
+async def results_get_count(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    if message.text == BTN_4_WINNERS:
+        count = 4
+    elif message.text == BTN_5_WINNERS:
+        count = 5
+    else:
+        await message.answer("Iltimos tugmalardan birini tanlang:", reply_markup=get_count_keyboard())
+        return
+
+    channel_id_str = await db.get_setting("channel_id")
+    channel_id = int(channel_id_str)
+
+    await message.answer(f"⏳ {count} ta g'olib tanlanmoqda...")
+
+    verified_users = await db.fetchall(
+        "SELECT user_id, contest_number, first_name, username, referral_count "
+        "FROM users WHERE verified = TRUE "
+        "ORDER BY RANDOM()"
+    )
+    if len(verified_users) < count:
+        await state.clear()
+        await message.answer(
+            f"❌ Tasdiqlangan ishtirokchilar kamida {count} ta bo'lishi kerak. "
+            f"Hozirda: {len(verified_users)} ta",
+            reply_markup=get_admin_reply_keyboard(),
+        )
+        return
+
+    verification_svc = VerificationService(db, bot)
+    winners: list[dict] = []
+    skipped = 0
+    for user in verified_users:
+        if len(winners) >= count:
+            break
+        if await verification_svc.check_user_in_bot(user["user_id"]):
+            winners.append(user)
+        else:
+            skipped += 1
+
+    if len(winners) < count:
+        await state.clear()
+        await message.answer(
+            f"❌ Yetarli faol ishtirokchi yo'q.\n"
+            f"Faol: {len(winners)}, bloklagan/ketgan: {skipped}",
+            reply_markup=get_admin_reply_keyboard(),
+        )
+        return
+
+    lines = ["🏆 KONKURS NATIJALARI\n"]
+    for i, winner in enumerate(winners):
+        full_name = (winner.get("first_name") or "").strip() or winner.get("username") or str(winner["user_id"])
+        lines.append(f"{_PLACE_EMOJIS[i]} {i + 1}-o'rin — {full_name} — {winner['referral_count']} ta referal — Raqam: {winner['contest_number']}")
+    lines.append("\nTabriklaymiz! 🎉")
+    result_text = "\n".join(lines)
+
+    await state.set_state(ResultsFlow.waiting_reply_link)
+    await state.update_data(
+        winners=json.dumps(winners),
+        result_text=result_text,
+        channel_id=channel_id,
+    )
+
+    await message.answer(
+        f"👀 <b>G'oliblar ko'rinishi:</b>\n\n{result_text}\n\n"
+        f"🔗 Qaysi kanal xabariga reply qilinsin?\n"
+        f"Xabar havolasini yuboring yoki o'tkazib yuboring:",
+        reply_markup=get_link_keyboard(),
+    )
+
+
+@router.message(ResultsFlow.waiting_reply_link)
+async def results_get_link(message: Message, state: FSMContext) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("❌ Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+
+    reply_chat = None
+    reply_msg_id = None
+
+    if message.text and message.text != BTN_SKIP_LINK:
+        reply_chat, reply_msg_id = _parse_message_link(message.text.strip())
+        if reply_chat is None:
+            await message.answer("❌ Havola noto'g'ri. Qaytadan yuboring yoki o'tkazib yuboring:")
+            return
+
+    await state.update_data(reply_chat=str(reply_chat) if reply_chat else None, reply_msg_id=reply_msg_id)
+    await state.set_state(ResultsFlow.confirm)
+    await message.answer(
+        "⚠️ Kanalga yuborilsinmi?",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text=BTN_CONFIRM_SEND)], [KeyboardButton(text=BTN_CANCEL)]],
+            resize_keyboard=True,
+        ),
+    )
+
+
+@router.message(ResultsFlow.confirm, F.text == BTN_CONFIRM_SEND)
+async def confirm_results(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    data = await state.get_data()
+    winners: list[dict] = json.loads(data["winners"])
+    result_text: str = data["result_text"]
+    channel_id: int = data["channel_id"]
+    reply_chat = data.get("reply_chat")
+    reply_msg_id = data.get("reply_msg_id")
+    await state.clear()
+
+    for place, winner in enumerate(winners, 1):
+        try:
+            await db.execute(
+                "INSERT INTO winners (user_id, place, contest_number) VALUES (?, ?, ?)",
+                (winner["user_id"], place, winner["contest_number"]),
+            )
+        except Exception as exc:
+            logger.error("Failed to save winner %s: %s", winner["user_id"], exc)
+    await db.commit()
+
+    try:
+        if reply_chat and reply_msg_id:
+            chat = int(reply_chat) if reply_chat.lstrip("-").isdigit() else reply_chat
+            await bot.send_message(chat, result_text, reply_to_message_id=reply_msg_id)
+        else:
+            await bot.send_message(channel_id, result_text)
+        await message.answer("✅ Natijalar kanalga yuborildi!", reply_markup=get_admin_reply_keyboard())
+    except Exception as exc:
+        logger.error("Failed to post results: %s", exc)
+        await message.answer(
+            f"❌ Kanalga yuborishda xato: {exc}\n\nNatijalar:\n\n{result_text}",
+            reply_markup=get_admin_reply_keyboard(),
+        )
+
+
+@router.message(ResultsFlow.confirm, F.text == BTN_CANCEL)
+async def cancel_results(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("❌ Natijalar yuborilmadi.", reply_markup=get_admin_reply_keyboard())
+
+
+============================================================
+FILE: handlers\admin\settings.py
+============================================================
+import logging
+from html import escape
+
+from aiogram import F, Router
+from aiogram.filters import Command, or_f
+from aiogram.filters.command import CommandObject
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
+
+from database.connection import Database
+from keyboards.admin_kb import (
+    BTN_CANCEL,
+    BTN_SETTINGS,
+    BTN_SETUP,
+    BTN_START,
+    BTN_STATS,
+    BTN_STOP,
+    BTN_TOGGLE_MODE,
+    get_admin_reply_keyboard,
+    get_cancel_keyboard,
+)
+from services.contest_service import ContestService
+from states.admin import SetupWizard
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+
+
+@router.message(or_f(Command("setup"), F.text == BTN_SETUP))
+async def cmd_setup(message: Message, state: FSMContext) -> None:
+    await state.set_state(SetupWizard.waiting_group_id)
+    await message.answer(
+        "Guruh ID kiriting (masalan: -1001234567890):",
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(SetupWizard.waiting_group_id)
+async def wizard_group_id(message: Message, state: FSMContext, db: Database) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+    group_id = message.text.strip()
+    await state.update_data(group_id=group_id)
+    await db.set_setting("group_id", group_id)
+    await state.set_state(SetupWizard.waiting_channel_id)
+    await message.answer("Kanal ID kiriting (masalan: -1009876543210):")
+
+
+@router.message(SetupWizard.waiting_channel_id)
+async def wizard_channel_id(message: Message, state: FSMContext, db: Database) -> None:
+    if message.text == BTN_CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=get_admin_reply_keyboard())
+        return
+    channel_id = message.text.strip()
+    data = await state.get_data()
+    group_id = data.get("group_id", "N/A")
+    await db.set_setting("channel_id", channel_id)
+    await state.clear()
+    await message.answer(
+        f"✅ Sozlamalar saqlandi!\n\n"
+        f"👥 Guruh ID: <code>{escape(group_id)}</code>\n"
+        f"📢 Kanal ID: <code>{escape(channel_id)}</code>",
+        reply_markup=get_admin_reply_keyboard(),
+    )
+
+
+@router.message(Command("setgroup"))
+async def cmd_setgroup(message: Message, command: CommandObject, db: Database) -> None:
+    if not command.args:
+        await message.answer("Foydalanish: /setgroup GROUP_ID")
+        return
+    group_id = command.args.strip()
+    await db.set_setting("group_id", group_id)
+    await message.answer(f"✅ Guruh ID saqlandi: <code>{escape(group_id)}</code>")
+
+
+@router.message(Command("setchannel"))
+async def cmd_setchannel(message: Message, command: CommandObject, db: Database) -> None:
+    if not command.args:
+        await message.answer("Foydalanish: /setchannel CHANNEL_ID")
+        return
+    channel_id = command.args.strip()
+    await db.set_setting("channel_id", channel_id)
+    await message.answer(f"✅ Kanal ID saqlandi: <code>{escape(channel_id)}</code>")
+
+
+@router.message(F.text == BTN_TOGGLE_MODE)
+async def cmd_toggle_mode(message: Message, db: Database) -> None:
+    current = await db.get_setting("bot_mode") or "BOT"
+    new_mode = "CHANNEL" if current == "BOT" else "BOT"
+    await db.set_setting("bot_mode", new_mode)
+    
+    mode_names = {
+        "BOT": "Bot Konkursi (Do'stlarni taklif qilish + skrinshot) 🤖",
+        "CHANNEL": "Kanal Konkursi (Sponsor kanallarga obuna bo'lish kifoya) 📢"
+    }
+    await message.answer(
+        f"🔄 Bot rejimi almashtirildi!\n\n"
+        f"Joriy faol rejim:\n<b>{mode_names[new_mode]}</b>"
+    )
+
+
+@router.message(or_f(Command("settings"), F.text == BTN_SETTINGS))
+async def cmd_settings(message: Message, db: Database) -> None:
+    group_id   = escape(await db.get_setting("group_id")   or "Belgilanmagan")
+    channel_id = escape(await db.get_setting("channel_id") or "Belgilanmagan")
+    admin_ids  = escape(await db.get_setting("admin_ids")  or "Belgilanmagan")
+    contest_active = (await db.get_setting("contest_active")) == "TRUE"
+    status_text = "Faol ✅" if contest_active else "To'xtatilgan ❌"
+    
+    bot_mode = await db.get_setting("bot_mode") or "BOT"
+    mode_text = "🤖 Bot ichida konkurs" if bot_mode == "BOT" else "📢 Kanal homiyligi / konkursi"
+    
+    stats = await ContestService(db).get_stats()
+
+    await message.answer(
+        "⚙️ <b>Bot sozlamalari:</b>\n\n"
+        f"👥 Guruh ID: <code>{group_id}</code>\n"
+        f"📢 Kanal ID: <code>{channel_id}</code>\n"
+        f"👑 Adminlar: <code>{admin_ids}</code>\n"
+        f"🔄 Bot rejimi: <b>{mode_text}</b>\n"
+        f"📊 Konkurs holati: {status_text}\n"
+        f"Ishtirokchilar: {stats['total']}\n"
+        f"Tasdiqlangan: {stats['verified']}"
+    )
+
+
+@router.message(or_f(Command("start_contest"), F.text == BTN_START))
+async def cmd_start_contest(message: Message, db: Database) -> None:
+    await db.set_setting("contest_active", "TRUE")
+    await message.answer("✅ Konkurs boshlandi!")
+
+
+@router.message(or_f(Command("stop_contest"), F.text == BTN_STOP))
+async def cmd_stop_contest(message: Message, db: Database) -> None:
+    await db.set_setting("contest_active", "FALSE")
+    await message.answer("⏹ Konkurs to'xtatildi.")
+
+
+@router.message(or_f(Command("stats"), F.text == BTN_STATS))
+async def cmd_stats(message: Message, db: Database) -> None:
+    stats = await ContestService(db).get_stats()
+    lines = [
+        "📊 <b>Konkurs statistikasi:</b>\n",
+        f"👥 Jami ishtirokchilar: {stats['total']}",
+        f"✅ Tasdiqlangan: {stats['verified']}",
+        f"⏳ Kutilayotganlar (5+ referral): {stats['pending']}",
+    ]
+    if stats["top_referrers"]:
+        lines.append("\n🏅 Top 5 referrerlar:")
+        for i, u in enumerate(stats["top_referrers"], 1):
+            name = escape(u.get("first_name") or str(u["user_id"]))
+            lines.append(f"  {i}. {name} — {u['referral_count']} ta")
+    await message.answer("\n".join(lines))
+
+
+============================================================
+FILE: handlers\user\__init__.py
+============================================================
+from aiogram import Router
+from aiogram.enums import ChatType
+from aiogram.filters import Filter
+from aiogram import F
+
+from handlers.user.group_handlers import router as group_router
+from handlers.user.join_request import router as join_request_router
+from handlers.user.start import router as start_router
+from handlers.user.statistics import router as stats_router
+from middlewares.anti_flood import AntiFloodMiddleware
+from middlewares.queue_middleware import QueueMiddleware
+from middlewares.subscription_middleware import SubscriptionMiddleware
+
+# Faqat private chat handlerlari
+user_router = Router()
+user_router.message.filter(F.chat.type == ChatType.PRIVATE)
+user_router.message.middleware(QueueMiddleware(max_concurrent=20))
+user_router.callback_query.middleware(QueueMiddleware(max_concurrent=20))
+user_router.message.middleware(AntiFloodMiddleware(limit=3, window=5.0))
+user_router.message.middleware(SubscriptionMiddleware())
+user_router.callback_query.middleware(SubscriptionMiddleware())
+
+user_router.include_router(join_request_router)
+user_router.include_router(start_router)
+user_router.include_router(stats_router)
+
+__all__ = ["user_router", "group_router"]
+
+
+============================================================
+FILE: handlers\user\group_handlers.py
+============================================================
+from aiogram import F, Router
+from aiogram.enums import ChatType
+from aiogram.filters import Command
+from aiogram.types import Message
+
+from database.connection import Database
+from services.contest_service import ContestService
+from utils.emoji import ce
+
+router = Router()
+
+
+@router.message(Command("id"), F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
+async def cmd_id(message: Message) -> None:
+    await message.reply(f"🆔 Guruh ID: <code>{message.chat.id}</code>")
+
+
+@router.message(F.photo, F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
+async def handle_group_screenshot(message: Message, db: Database) -> None:
+    group_id_str = await db.get_setting("group_id")
+    if not group_id_str:
+        return
+
+    val = group_id_str.strip()
+    if val.lstrip("-").isdigit():
+        if message.chat.id != int(val):
+            return
+    else:
+        username = val.lstrip("@").lower()
+        if (message.chat.username or "").lower() != username:
+            return
+
+    bot_mode = await db.get_setting("bot_mode") or "BOT"
+    if bot_mode != "BOT":
+        return
+
+    contest_svc = ContestService(db)
+    if not await contest_svc.is_contest_active():
+        return
+
+    if not message.from_user:
+        return
+
+    user_id = message.from_user.id
+
+    row = await db.fetchone(
+        "SELECT referral_count, verified FROM users WHERE user_id = ?", (user_id,)
+    )
+    if not row:
+        await message.reply(
+            "❗ Siz botda ro'yxatdan o'tmagansiz.\n"
+            "Botga kiring va /start bosing: @SokinKonkursBot"
+        )
+        return
+
+    if row["verified"]:
+        return
+
+    count: int = row["referral_count"]
+    if count < 5:
+        await message.reply(
+            f"❌ Hali 5 ta do'st chaqirilmagan!\n\n"
+            f"{ce('👥')} Siz taklif qilganlar: <b>{count}/5</b>\n"
+            f"{ce('⌛')} Yana <b>{5 - count} ta</b> do'st kerak."
+        )
+        return
+
+    number = await contest_svc.verify_user(user_id)
+    if number is None:
+        await message.reply("❌ Raqam berishda xato yuz berdi. Admin bilan bog'laning.")
+        return
+
+    user = message.from_user
+    full_name = " ".join(filter(None, [user.first_name, user.last_name])).strip() or user.username or str(user.id)
+    await message.reply(
+        f"{ce('✅')} {full_name}, Sizning xabaringiz qabul qilindi. "
+        f"Tartib raqamingiz: <b>{number}</b>"
+    )
+
+
+============================================================
+FILE: handlers\user\join_request.py
+============================================================
+import logging
+
+from aiogram import Router
+from aiogram.types import ChatJoinRequest
+
+from database.connection import Database
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+
+@router.chat_join_request()
+async def record_zayafka_request(request: ChatJoinRequest, db: Database) -> None:
+    logger.info("JOIN REQUEST received: user=%s chat=%s", request.from_user.id, request.chat.id)
+    zayafka_rows = await db.fetchall("SELECT channel_id FROM zayafka_channels")
+    zayafka_ids = {str(row["channel_id"]).strip() for row in zayafka_rows}
+    logger.info("Zayafka IDs in DB: %s", zayafka_ids)
+
+    if str(request.chat.id) not in zayafka_ids:
+        return
+
+    await db.execute(
+        "INSERT OR IGNORE INTO zayafka_join_requests (user_id, channel_id) VALUES (?, ?)",
+        (request.from_user.id, str(request.chat.id)),
+    )
+    await db.commit()
+    logger.info(
+        "Recorded zayafka join request: user=%s channel=%s",
+        request.from_user.id,
+        request.chat.id,
+    )
+
+
+============================================================
+FILE: handlers\user\start.py
+============================================================
+from aiogram import Bot, F, Router
+from aiogram.filters import CommandStart
+from aiogram.types import CallbackQuery, Message
+
+from database.connection import Database
+from utils.emoji import ce, reload as reload_emojis, _CE
+from keyboards.user_kb import (
+    BTN_MY_LINK,
+    BTN_MY_REFS,
+    get_keyboard_remove,
+    get_main_inline_keyboard,
+    get_phone_keyboard,
+    get_subscription_keyboard,
+    get_user_reply_keyboard,
+)
+from services.contest_service import ContestService
+from services.referral_service import ReferralService
+from services.subscription_service import SubscriptionService
+
+router = Router()
+
+
+
+async def _ensure_user(
+    db: Database, user_id: int, username: str | None, first_name: str | None
+) -> None:
+    await db.execute(
+        "INSERT OR IGNORE INTO users "
+        "(user_id, username, first_name, participated, created_at, updated_at) "
+        "VALUES (?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        (user_id, username or "", first_name or ""),
+    )
+    await db.execute(
+        "UPDATE users SET username = ?, first_name = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE user_id = ?",
+        (username or "", first_name or "", user_id),
+    )
+    await db.commit()
+
+
+async def _notify_referrer(db: Database, bot: Bot, new_user) -> None:
+    row = await db.fetchone(
+        "SELECT referrer_id FROM referrals WHERE referred_id = ?", (new_user.id,)
+    )
+    if not row:
+        return
+    referrer_id = row["referrer_id"]
+    count_row = await db.fetchone(
+        "SELECT referral_count FROM users WHERE user_id = ?", (referrer_id,)
+    )
+    count = count_row["referral_count"] if count_row else 0
+    full_name = " ".join(filter(None, [new_user.first_name, new_user.last_name])).strip() or new_user.username or str(new_user.id)
+    try:
+        await bot.send_message(
+            referrer_id,
+            f"{ce('🎉')} Sizning havolangiz orqali <b>{full_name}</b> ro'yxatdan o'tdi!\n\n"
+            f"{ce('👥')} Taklif qilganlaringiz: <b>{count}/5</b>",
+        )
+    except Exception:
+        pass
+
+
+async def _notify_admins(db: Database, bot: Bot, user: object) -> None:
+    admin_ids_str = await db.get_setting("admin_ids") or ""
+    admin_ids = [
+        int(x.strip()) for x in admin_ids_str.split(",") if x.strip().lstrip("-").isdigit()
+    ]
+    full_name = " ".join(filter(None, [user.first_name, user.last_name])).strip() or user.username or str(user.id)
+    username_part = f" (@{user.username})" if user.username else ""
+    text = f"✅ Yangi ishtirokchi ro'yxatdan o'tdi!\n\n👤 {full_name}{username_part}\n🆔 <code>{user.id}</code>"
+    for admin_id in admin_ids:
+        try:
+            await bot.send_message(admin_id, text)
+        except Exception:
+            pass
+
+
+async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str, user_id: int) -> None:
+    sub_svc = SubscriptionService(db, bot)
+    unsubscribed = await sub_svc.get_unsubscribed(user_id)
+    if unsubscribed:
+        await message.answer(
+            sub_svc.build_prompt_text(unsubscribed),
+            reply_markup=get_subscription_keyboard(unsubscribed),
+        )
+        return
+
+    bot_mode = await db.get_setting("bot_mode") or "BOT"
+
+    if bot_mode == "CHANNEL":
+        user_row = await db.fetchone(
+            "SELECT verified, contest_number FROM users WHERE user_id = ?", (user_id,)
+        )
+        if not user_row:
+            await message.answer("❌ Xatolik yuz berdi. /start bosing.")
+            return
+        verified = user_row.get("verified") or False
+        contest_number = user_row.get("contest_number")
+        if not verified or not contest_number:
+            contest_number = await ContestService(db).verify_user(user_id)
+        text = (
+            f"{ce('🎉')} <b>Kanal konkursiga xush kelibsiz!</b>\n\n"
+            f"{ce('✅')} Siz barcha homiy kanallarga obuna bo'ldingiz va konkursda ro'yxatdan o'tdingiz!\n\n"
+            f"🎫 Sizning konkurs raqamingiz: <b>{contest_number}</b>\n\n"
+            "📣 Konkurs natijalari kanalda e'lon qilinadi. Obunani o'chirmang!"
+        )
+    else:
+        count = await ReferralService(db).get_referral_count(user_id)
+        group_id = await db.get_setting("group_id") or "guruh_belgilanmagan"
+        ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+        text = (
+            f"{ce('🎉')} Konkursga xush kelibsiz!\n\n"
+            f"{ce('📃')} Qoidalar:\n"
+            f"{ce('1️⃣')} 5 ta do'stingizni botga taklif qiling\n"
+            f"{ce('2️⃣')} Barcha do'stlaringiz /start bosishi kerak\n"
+            f"{ce('3️⃣')} 5 ta odam to'plab, statistikangizni skrinshot qiling\n"
+            f"{ce('4️⃣')} Skrinshotni guruhga tashlang: {group_id}\n"
+            f"{ce('5️⃣')} Bot tekshiradi va raqam beradi!\n\n"
+            f"{ce('👥')} Hozirgi taklif qilganlaringiz: {count}/5\n"
+            f"{ce('🔗')} Sizning havolangiz:\n<code>{ref_link}</code>"
+        )
+
+    await message.answer(text, reply_markup=get_user_reply_keyboard())
+
+    result = await db.execute(
+        "UPDATE users SET welcomed = TRUE WHERE user_id = ? AND welcomed = FALSE", (user_id,)
+    )
+    await db.commit()
+    if result.rowcount > 0:
+        await _notify_admins(db, bot, message.from_user)
+        await _notify_referrer(db, bot, message.from_user)
+
+
+
+
+@router.message(CommandStart())
+async def cmd_start(message: Message, db: Database, bot: Bot, bot_username: str) -> None:
+    user = message.from_user
+    await _ensure_user(db, user.id, user.username, user.first_name)
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) > 1 and parts[1].startswith("ref_"):
+        ref_str = parts[1][4:]
+        if ref_str.isdigit():
+            referrer_id = int(ref_str)
+            if referrer_id != user.id:
+                referrer = await db.fetchone(
+                    "SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)
+                )
+                if referrer:
+                    await ReferralService(db).add_referral(referrer_id, user.id)
+
+    row = await db.fetchone("SELECT phone FROM users WHERE user_id = ?", (user.id,))
+    if not row or not row.get("phone"):
+        await message.answer(
+            f"{ce('📱')} Botdan foydalanish uchun telefon raqamingizni ulashing:",
+            reply_markup=get_phone_keyboard(),
+        )
+        return
+
+    await _show_main(message, db, bot, bot_username, user.id)
+
+
+@router.message(F.contact)
+async def handle_contact(message: Message, db: Database, bot: Bot, bot_username: str) -> None:
+    contact = message.contact
+    if contact.user_id is not None and contact.user_id != message.from_user.id:
+        await message.answer("❌ Faqat o'z raqamingizni ulashing.")
+        return
+
+    await db.execute(
+        "UPDATE users SET phone = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        (contact.phone_number, message.from_user.id),
+    )
+    await db.commit()
+
+    await message.answer(f"{ce('✅')} Telefon raqam saqlandi!", reply_markup=get_keyboard_remove())
+    await _show_main(message, db, bot, bot_username, message.from_user.id)
+
+
+@router.message(F.text == BTN_MY_LINK)
+async def btn_my_link(message: Message, db: Database, bot_username: str) -> None:
+    user_id = message.from_user.id
+    ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+    count = await ReferralService(db).get_referral_count(user_id)
+
+    await message.answer(
+        f"{ce('🔗')} <b>Sizning referal havolangiz:</b>\n\n"
+        f"<code>{ref_link}</code>\n\n"
+        f"{ce('👥')} Taklif qilganlar: <b>{count}/5</b>"
+    )
+
+
+@router.message(F.text == BTN_MY_REFS)
+async def btn_my_refs(message: Message, db: Database) -> None:
+    user_id = message.from_user.id
+
+    row = await db.fetchone(
+        "SELECT referral_count, verified, contest_number FROM users WHERE user_id = ?",
+        (user_id,),
+    )
+    if not row:
+        await message.answer("Ma'lumot topilmadi. /start bosing.")
+        return
+
+    count: int = row["referral_count"]
+    verified: bool = row["verified"]
+    contest_number = row["contest_number"]
+
+    if count >= 5:
+        status = f"{ce('✅')} Tayyor! Skrinshotni guruhga yuboring."
+    else:
+        status = f"{ce('⌛')} Yana {5 - count} ta do'st kerak"
+
+    lines = [
+        f"{ce('👥')} <b>Referallar statistikasi:</b>\n",
+        f"{ce('📊')} Taklif qilganlar: <b>{count}/5</b>",
+        f"{ce('📌')} Holat: {status}",
+    ]
+
+    if verified and contest_number:
+        lines.append(f"{ce('✅')} Konkurs raqamingiz: <b>{contest_number}</b>")
+
+    await message.answer("\n".join(lines), reply_markup=get_main_inline_keyboard())
+
+
+@router.callback_query(F.data == "my_friends")
+async def my_friends_callback(callback: CallbackQuery, db: Database) -> None:
+    user_id = callback.from_user.id
+
+    referred_rows = await db.fetchall(
+        "SELECT u.first_name, u.username FROM referrals r "
+        "JOIN users u ON u.user_id = r.referred_id "
+        "WHERE r.referrer_id = ? ORDER BY r.created_at",
+        (user_id,),
+    )
+
+    if referred_rows:
+        lines = [f"{ce('👥')} <b>Do'stlar ro'yxati ({len(referred_rows)} ta):</b>\n"]
+        for i, r in enumerate(referred_rows[:20], 1):
+            name = (r.get("first_name") or "").strip() or r.get("username") or "Noma'lum"
+            lines.append(f"  {i}. {name}")
+        if len(referred_rows) > 20:
+            lines.append(f"  … va yana {len(referred_rows) - 20} ta")
+    else:
+        lines = [f"{ce('👥')} <b>Do'stlar ro'yxati:</b>\n", "<i>Hali hech kim taklif qilinmagan.</i>"]
+
+    try:
+        await callback.message.edit_text("\n".join(lines))
+    except Exception:
+        await callback.message.answer("\n".join(lines))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("zayafka_joined:"))
+async def zayafka_joined_callback(callback: CallbackQuery, db: Database) -> None:
+    channel_id = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+    await db.execute(
+        "INSERT OR IGNORE INTO zayafka_join_requests (user_id, channel_id) VALUES (?, ?)",
+        (user_id, channel_id),
+    )
+    await db.commit()
+    await callback.answer("✅ Qabul qilindi! Endi 'Obunani tekshirish' ni bosing.", show_alert=False)
+
+
+@router.callback_query(F.data == "check_subscription")
+async def check_subscription_callback(callback: CallbackQuery, db: Database, bot: Bot) -> None:
+    await callback.answer()
+    user_id = callback.from_user.id
+    sub_svc = SubscriptionService(db, bot)
+    try:
+        unsubscribed = await sub_svc.get_unsubscribed(user_id)
+
+        if not unsubscribed:
+            bot_mode = await db.get_setting("bot_mode") or "BOT"
+            if bot_mode == "CHANNEL":
+                user_row = await db.fetchone(
+                    "SELECT verified, contest_number FROM users WHERE user_id = ?", (user_id,)
+                )
+                if not user_row:
+                    await callback.message.edit_text("❌ Xatolik yuz berdi. /start bosing.")
+                    return
+                verified = user_row.get("verified") or False
+                contest_number = user_row.get("contest_number")
+                if not verified or not contest_number:
+                    contest_number = await ContestService(db).verify_user(user_id)
+                await callback.message.edit_text(
+                    f"{ce('🎉')} <b>Kanal konkursiga xush kelibsiz!</b>\n\n"
+                    f"{ce('✅')} Barcha kanallarga obuna bo'ldingiz va ro'yxatdan o'tdingiz!\n\n"
+                    f"🎫 Sizning konkurs raqamingiz: <b>{contest_number}</b>\n\n"
+                    "📣 Konkurs natijalari kanalda e'lon qilinadi. Kanallardan chiqib ketmang!",
+                )
+                result = await db.execute(
+                    "UPDATE users SET welcomed = TRUE WHERE user_id = ? AND welcomed = FALSE", (user_id,)
+                )
+                await db.commit()
+                if result.rowcount > 0:
+                    await _notify_admins(db, bot, callback.from_user)
+            else:
+                await callback.message.edit_text(
+                    f"{ce('✅')} Ajoyib! Siz barcha kanallarga obuna bo'ldingiz.\n\n"
+                    "Endi /start buyrug'ini yuboring.",
+                )
+            return
+
+        text = sub_svc.build_prompt_text(unsubscribed)
+        keyboard = get_subscription_keyboard(unsubscribed)
+        try:
+            await callback.message.edit_text(text, reply_markup=keyboard)
+        except Exception:
+            await callback.message.answer(text, reply_markup=keyboard)
+
+    except Exception:
+        try:
+            await callback.message.edit_text("❌ Xatolik yuz berdi. Qayta urinib ko'ring.")
+        except Exception:
+            pass
+
+
+
+
+============================================================
+FILE: handlers\user\statistics.py
+============================================================
+from aiogram import Router
+
+router = Router()
+
+
+============================================================
+FILE: keyboards\__init__.py
+============================================================
+from keyboards.admin_kb import (
+    BTN_ADD_PUBLIC,
+    BTN_ADD_ZAYAFKA,
+    BTN_BROADCAST,
+    BTN_CANCEL,
+    BTN_CHANNELS,
+    BTN_CLOSE,
+    BTN_DEL_PUBLIC,
+    BTN_DEL_ZAYAFKA,
+    BTN_RESULTS,
+    BTN_SETTINGS,
+    BTN_SETUP,
+    BTN_START,
+    BTN_STATS,
+    BTN_STOP,
+    BTN_TOGGLE_MODE,
+    get_admin_keyboard_remove,
+    get_admin_reply_keyboard,
+    get_cancel_keyboard,
+)
+from keyboards.user_kb import (
+    get_keyboard_remove,
+    get_phone_keyboard,
+    get_subscription_keyboard,
+    get_user_reply_keyboard,
+)
+
+__all__ = [
+    "get_user_reply_keyboard",
+    "get_subscription_keyboard",
+    "get_admin_reply_keyboard",
+    "get_admin_keyboard_remove",
+    "get_cancel_keyboard",
+    "BTN_STATS", "BTN_SETTINGS", "BTN_START", "BTN_STOP",
+    "BTN_RESULTS", "BTN_CHANNELS",
+    "BTN_ADD_PUBLIC", "BTN_DEL_PUBLIC",
+    "BTN_ADD_ZAYAFKA", "BTN_DEL_ZAYAFKA",
+    "BTN_SETUP", "BTN_CLOSE", "BTN_CANCEL",
+    "BTN_TOGGLE_MODE", "BTN_BROADCAST",
+]
+
+
+============================================================
+FILE: keyboards\admin_kb.py
+============================================================
+from aiogram.types import (
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
+
+# ── Button text constants ────────────────────────────────────────────────────
+BTN_STATS        = "📊 Statistika"
+BTN_SETTINGS     = "⚙️ Sozlamalar"
+BTN_START        = "▶️ Konkursni boshlash"
+BTN_STOP         = "⏹ Konkursni to'xtatish"
+BTN_TOGGLE_MODE  = "🔄 Rejimni almashtirish"
+BTN_BROADCAST    = "📢 Reklama tarqatish"
+BTN_RESULTS      = "🏆 Natijalar"
+BTN_CHANNELS     = "📋 Kanallar ro'yxati"
+BTN_ADD_PUBLIC   = "➕ Kanal qo'shish"
+BTN_DEL_PUBLIC   = "🗑 Kanal o'chirish"
+BTN_ADD_ZAYAFKA  = "🔐 Zayafka qo'shish"
+BTN_DEL_ZAYAFKA  = "❎ Zayafka o'chirish"
+BTN_SETUP        = "🔧 Guruh/Kanal sozlash"
+BTN_CLOSE        = "❌ Panelni yopish"
+BTN_CANCEL       = "🚫 Bekor qilish"
+
+
+def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_STATS),       KeyboardButton(text=BTN_SETTINGS)],
+            [KeyboardButton(text=BTN_START),        KeyboardButton(text=BTN_STOP)],
+            [KeyboardButton(text=BTN_TOGGLE_MODE),  KeyboardButton(text=BTN_BROADCAST)],
+            [KeyboardButton(text=BTN_RESULTS),      KeyboardButton(text=BTN_CHANNELS)],
+            [KeyboardButton(text=BTN_ADD_PUBLIC),   KeyboardButton(text=BTN_DEL_PUBLIC)],
+            [KeyboardButton(text=BTN_ADD_ZAYAFKA),  KeyboardButton(text=BTN_DEL_ZAYAFKA)],
+            [KeyboardButton(text=BTN_SETUP)],
+            [KeyboardButton(text=BTN_CLOSE)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def get_cancel_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=BTN_CANCEL)]],
+        resize_keyboard=True,
+    )
+
+
+def get_admin_keyboard_remove() -> ReplyKeyboardRemove:
+    return ReplyKeyboardRemove()
+
+
+
+
+============================================================
+FILE: keyboards\user_kb.py
+============================================================
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
+
+
+# ── Button text constants ────────────────────────────────────────────────────
+BTN_MY_LINK     = "🔗 Referal havolam"
+BTN_MY_REFS     = "👥 Referallarim"
+
+
+def get_phone_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Telefon raqamni ulashish", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def get_keyboard_remove() -> ReplyKeyboardRemove:
+    return ReplyKeyboardRemove()
+
+
+def get_user_reply_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_MY_LINK), KeyboardButton(text=BTN_MY_REFS)],
+        ],
+        resize_keyboard=True,
+    )
+
+
+
+def get_main_inline_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👥 Mening do'stlarim", callback_data="my_friends")]
+        ]
+    )
+
+
+def get_subscription_keyboard(unsubscribed: list[dict] | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for ch in (unsubscribed or []):
+        link = ch.get("link", "")
+        if ch["type"] == "public":
+            if link:
+                rows.append([InlineKeyboardButton(text=f"📢 {ch['name']}", url=link)])
+        else:
+            channel_id = ch.get("channel_id", "")
+            row = []
+            if link:
+                row.append(InlineKeyboardButton(text=f"🔐 {ch['name']}", url=link))
+            if channel_id:
+                row.append(InlineKeyboardButton(
+                    text="✅ So'rov yubordim",
+                    callback_data=f"zayafka_joined:{channel_id}",
+                ))
+            if row:
+                rows.append(row)
+    rows.append([InlineKeyboardButton(text="✅ Obunani tekshirish", callback_data="check_subscription")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+============================================================
+FILE: middlewares\__init__.py
+============================================================
+from middlewares.admin_middleware import AdminMiddleware
+from middlewares.subscription_middleware import SubscriptionMiddleware
+
+__all__ = ["AdminMiddleware", "SubscriptionMiddleware"]
+
+
+============================================================
+FILE: middlewares\admin_middleware.py
+============================================================
+from typing import Any, Awaitable, Callable
+
+from aiogram import BaseMiddleware
+from aiogram.types import CallbackQuery, Message, TelegramObject
+
+from database.connection import Database
+
+
+class AdminMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        db: Database | None = data.get("db")
+        if db is None:
+            return
+
+        admin_ids_str = await db.get_setting("admin_ids")
+        admin_ids: list[int] = []
+        if admin_ids_str:
+            admin_ids = [
+                int(x.strip())
+                for x in admin_ids_str.split(",")
+                if x.strip().lstrip("-").isdigit()
+            ]
+
+        from_user = None
+        if isinstance(event, (Message, CallbackQuery)):
+            from_user = event.from_user
+
+        if from_user is None or from_user.id not in admin_ids:
+            return
+
+        return await handler(event, data)
+
+
+============================================================
+FILE: middlewares\anti_flood.py
+============================================================
+import time
+from collections import defaultdict
+from typing import Any, Awaitable, Callable
+
+from aiogram import BaseMiddleware
+from aiogram.types import Message, TelegramObject
+
+_CLEANUP_EVERY = 500  # har 500 xabarda bir marta eski yozuvlar tozalanadi
+
+
+class AntiFloodMiddleware(BaseMiddleware):
+    def __init__(self, limit: int = 3, window: float = 5.0) -> None:
+        self._limit = limit
+        self._window = window
+        self._timestamps: dict[int, list[float]] = defaultdict(list)
+        self._warned: set[int] = set()
+        self._call_count = 0
+
+    def _cleanup(self, now: float) -> None:
+        """Uzoq vaqt xabar yubormagan foydalanuvchilarni xotiradan o'chirish."""
+        stale = [uid for uid, ts in self._timestamps.items() if not ts or now - ts[-1] > self._window * 10]
+        for uid in stale:
+            del self._timestamps[uid]
+            self._warned.discard(uid)
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        if not isinstance(event, Message):
+            return await handler(event, data)
+
+        from_user = event.from_user
+        if not from_user:
+            return await handler(event, data)
+
+        user_id = from_user.id
+        now = time.monotonic()
+
+        self._timestamps[user_id] = [
+            t for t in self._timestamps[user_id] if now - t < self._window
+        ]
+        self._timestamps[user_id].append(now)
+
+        # Vaqti-vaqti bilan idle userlarni tozalash
+        self._call_count += 1
+        if self._call_count >= _CLEANUP_EVERY:
+            self._call_count = 0
+            self._cleanup(now)
+
+        if len(self._timestamps[user_id]) > self._limit:
+            if user_id not in self._warned:
+                self._warned.add(user_id)
+                await event.answer(
+                    f"⚠️ Juda tez xabar yuboryapsiz. {int(self._window)} soniya kuting."
+                )
+            return
+
+        self._warned.discard(user_id)
+        return await handler(event, data)
+
+
+============================================================
+FILE: middlewares\queue_middleware.py
+============================================================
+import asyncio
+from typing import Any, Awaitable, Callable
+
+from aiogram import BaseMiddleware
+from aiogram.types import CallbackQuery, Message, TelegramObject
+
+
+class QueueMiddleware(BaseMiddleware):
+    """
+    Har bir user uchun bitta so'rov bir vaqtda ishlanadi.
+    Agar oldingi so'rov hali tugamagan bo'lsa — yangi so'rov o'tkazib yuboriladi.
+    Global semaphore bot yuklanishini cheklaydi.
+    """
+
+    def __init__(self, max_concurrent: int = 20) -> None:
+        self._global = asyncio.Semaphore(max_concurrent)
+        self._user_locks: dict[int, asyncio.Lock] = {}
+
+    def _get_lock(self, user_id: int) -> asyncio.Lock:
+        # setdefault — CPython da atomic, race condition yo'q
+        return self._user_locks.setdefault(user_id, asyncio.Lock())
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        user_id: int | None = None
+        if isinstance(event, (Message, CallbackQuery)):
+            user_id = event.from_user.id if event.from_user else None
+
+        if user_id is None:
+            return await handler(event, data)
+
+        lock = self._get_lock(user_id)
+
+        if lock.locked():
+            # User ning oldingi so'rovi hali ishlanmoqda — o'tkazib yuboramiz
+            if isinstance(event, CallbackQuery):
+                await event.answer()
+            return
+
+        async with self._global:
+            async with lock:
+                return await handler(event, data)
+        # Lock bo'shatilgandan keyin, hech kim kutmayotgan bo'lsa o'chiramiz
+        if not getattr(lock, "_waiters", None):
+            self._user_locks.pop(user_id, None)
+
+
+============================================================
+FILE: middlewares\subscription_middleware.py
+============================================================
+from typing import Any, Awaitable, Callable
+import time
+
+from aiogram import BaseMiddleware, Bot
+from aiogram.enums import ChatType
+from aiogram.types import CallbackQuery, Message, TelegramObject
+
+from database.connection import Database
+from keyboards.user_kb import get_subscription_keyboard
+from services.subscription_service import SubscriptionService
+
+
+class SubscriptionMiddleware(BaseMiddleware):
+    # Class-level cache: {user_id: (is_subscribed, expires_at)}
+    _cache: dict[int, tuple[bool, float]] = {}
+    _CACHE_TTL = 60.0  # kesh muddati - 60 soniya
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        db: Database | None = data.get("db")
+        bot: Bot | None = data.get("bot")
+
+        if db is None or bot is None:
+            return await handler(event, data)
+
+        from_user = None
+        if isinstance(event, (Message, CallbackQuery)):
+            from_user = event.from_user
+
+        if from_user is None:
+            return await handler(event, data)
+
+        # Admins bypass subscription check
+        admin_ids_str = await db.get_setting("admin_ids") or ""
+        admin_ids = [
+            int(x.strip())
+            for x in admin_ids_str.split(",")
+            if x.strip().lstrip("-").isdigit()
+        ]
+        if from_user.id in admin_ids:
+            return await handler(event, data)
+
+        # Group/supergroup messages always pass through — only check in private
+        if isinstance(event, Message) and event.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+            return await handler(event, data)
+
+        # /start, /id and contact share always pass through
+        if isinstance(event, Message):
+            if event.text and event.text.startswith("/start"):
+                return await handler(event, data)
+            if event.text and event.text.startswith("/id"):
+                return await handler(event, data)
+            if event.contact is not None:
+                return await handler(event, data)
+
+        # Always let the "Tekshirish" callback through
+        if isinstance(event, CallbackQuery) and event.data == "check_subscription":
+            return await handler(event, data)
+
+        # Keshni tekshirish
+        user_id = from_user.id
+        now = time.time()
+        if user_id in self._cache:
+            is_sub, expires = self._cache[user_id]
+            if now < expires and is_sub:
+                return await handler(event, data)
+
+        sub_svc = SubscriptionService(db, bot)
+        unsubscribed = await sub_svc.get_unsubscribed(user_id)
+
+        if not unsubscribed:
+            # Obuna muvaffaqiyatli o'tgan bo'lsa keshga yozamiz
+            self._cache[user_id] = (True, now + self._CACHE_TTL)
+            return await handler(event, data)
+
+        # Obunadan chiqqan bo'lsa keshdan o'chirib tashlaymiz
+        self._cache.pop(user_id, None)
+        text = sub_svc.build_prompt_text(unsubscribed)
+        keyboard = get_subscription_keyboard(unsubscribed)
+
+        if isinstance(event, Message):
+            await event.answer(text, reply_markup=keyboard)
+        elif isinstance(event, CallbackQuery):
+            await event.answer("Avval kanallarga obuna bo'ling!", show_alert=True)
+            await event.message.answer(text, reply_markup=keyboard)
+
+
+============================================================
+FILE: nginx\nginx.conf
+============================================================
+server {
+    listen 80;
+    server_name smart-tools.uk;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name smart-tools.uk;
+
+    ssl_certificate     /etc/letsencrypt/live/smart-tools.uk/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/smart-tools.uk/privkey.pem;
+
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    location /webhook/ {
+        proxy_pass         http://bot:8080;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
+
+============================================================
+FILE: services\__init__.py
+============================================================
+
+from services.contest_service import ContestService
+from services.referral_service import ReferralService
+from services.subscription_service import SubscriptionService
+from services.verification_service import VerificationService
+
+__all__ = ["ReferralService", "ContestService", "VerificationService", "SubscriptionService"]
+
+
+============================================================
+FILE: services\contest_service.py
+============================================================
+import aiosqlite
+import random
+from typing import Optional
+
+from database.connection import Database
+
+
+class ContestService:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    async def generate_contest_number(self) -> Optional[int]:
+        """Pick a random unique number in [100000, 999999]."""
+        for _ in range(100):
+            number = random.randint(100000, 999999)
+            row = await self.db.fetchone(
+                "SELECT 1 FROM users WHERE contest_number = ?", (number,)
+            )
+            if not row:
+                return number
+        return None
+
+    async def verify_user(self, user_id: int) -> Optional[int]:
+        """Assign a unique contest number and mark user as verified. Returns the number."""
+        for _ in range(10):
+            number = await self.generate_contest_number()
+            if number is None:
+                return None
+            try:
+                cursor = await self.db.execute(
+                    "UPDATE users SET contest_number = ?, verified = TRUE, "
+                    "updated_at = CURRENT_TIMESTAMP "
+                    "WHERE user_id = ? AND verified = FALSE",
+                    (number, user_id),
+                )
+                await self.db.commit()
+                if cursor.rowcount > 0:
+                    return number
+                # Boshqa coroutine allaqachon verify qilgan — uning raqamini qaytaramiz
+                row = await self.db.fetchone(
+                    "SELECT contest_number FROM users WHERE user_id = ? AND verified = TRUE",
+                    (user_id,),
+                )
+                if row:
+                    return row["contest_number"]
+                # verified = FALSE, lekin rowcount = 0 — kutilmagan holat, qayta urinish
+                continue
+            except aiosqlite.IntegrityError:
+                # contest_number UNIQUE collision — boshqa raqam bilan qayta urinish
+                continue
+            except Exception:
+                return None
+        return None
+
+    async def is_user_eligible(self, user_id: int) -> bool:
+        """True if user has 5+ referrals and is not yet verified."""
+        row = await self.db.fetchone(
+            "SELECT referral_count, verified FROM users WHERE user_id = ?", (user_id,)
+        )
+        if not row:
+            return False
+        return row["referral_count"] >= 5 and not row["verified"]
+
+    async def is_contest_active(self) -> bool:
+        value = await self.db.get_setting("contest_active")
+        return value == "TRUE"
+
+    async def get_stats(self) -> dict:
+        total = await self.db.fetchone(
+            "SELECT COUNT(*) AS c FROM users WHERE participated = TRUE"
+        )
+        verified = await self.db.fetchone(
+            "SELECT COUNT(*) AS c FROM users WHERE verified = TRUE"
+        )
+        pending = await self.db.fetchone(
+            "SELECT COUNT(*) AS c FROM users WHERE referral_count >= 5 AND verified = FALSE"
+        )
+        top = await self.db.fetchall(
+            "SELECT user_id, first_name, referral_count FROM users "
+            "ORDER BY referral_count DESC LIMIT 5"
+        )
+        return {
+            "total": total["c"] if total else 0,
+            "verified": verified["c"] if verified else 0,
+            "pending": pending["c"] if pending else 0,
+            "top_referrers": top,
+        }
+
+
+============================================================
+FILE: services\referral_service.py
+============================================================
+import logging
+
+from database.connection import Database
+
+logger = logging.getLogger(__name__)
+
+
+class ReferralService:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    async def add_referral(self, referrer_id: int, referred_id: int) -> bool:
+        """Add referral. Returns True on success, False if duplicate or self-referral."""
+        if referrer_id == referred_id:
+            return False
+        try:
+            # INSERT OR IGNORE — UNIQUE(referred_id) constraint atomik ravishda
+            # race condition ni oldini oladi: SELECT+INSERT emas, bitta operatsiya
+            result = await self.db.execute(
+                "INSERT OR IGNORE INTO referrals (referrer_id, referred_id) VALUES (?, ?)",
+                (referrer_id, referred_id),
+            )
+            if result.rowcount == 0:
+                return False
+            await self.db.execute(
+                "UPDATE users SET referral_count = referral_count + 1, "
+                "updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                (referrer_id,),
+            )
+            await self.db.commit()
+            return True
+        except Exception:
+            logger.exception("add_referral failed referrer=%s referred=%s", referrer_id, referred_id)
+            return False
+
+    async def get_referral_count(self, user_id: int) -> int:
+        row = await self.db.fetchone(
+            "SELECT referral_count FROM users WHERE user_id = ?", (user_id,)
+        )
+        return row["referral_count"] if row else 0
+
+    async def get_referred_users(self, user_id: int) -> list[int]:
+        rows = await self.db.fetchall(
+            "SELECT referred_id FROM referrals WHERE referrer_id = ? ORDER BY created_at",
+            (user_id,),
+        )
+        return [r["referred_id"] for r in rows]
+
+
+============================================================
+FILE: services\subscription_service.py
+============================================================
+import logging
+
+from aiogram import Bot
+
+from database.connection import Database
+from utils.emoji import ce
+
+logger = logging.getLogger(__name__)
+
+
+class SubscriptionService:
+    def __init__(self, db: Database, bot: Bot) -> None:
+        self.db = db
+        self.bot = bot
+
+    async def get_public_channels(self) -> list[dict]:
+        return await self.db.fetchall("SELECT * FROM public_channels ORDER BY id")
+
+    async def get_zayafka_channels(self) -> list[dict]:
+        return await self.db.fetchall("SELECT * FROM zayafka_channels ORDER BY id")
+
+    async def _is_member(self, user_id: int, channel_id: str) -> bool:
+        # Pass numeric IDs as int — Telegram API works more reliably this way
+        try:
+            cid: int | str = int(channel_id) if channel_id.lstrip("-").isdigit() else channel_id
+            member = await self.bot.get_chat_member(cid, user_id)
+            result = member.status not in ("left", "kicked", "banned")
+            logger.debug("check_member channel=%s user=%s status=%s → %s", cid, user_id, member.status, result)
+            return result
+        except Exception as e:
+            logger.warning("get_chat_member FAILED channel=%s user=%s → %s", channel_id, user_id, e)
+            return False
+
+    async def _has_zayafka_request(self, user_id: int, channel_id: str) -> bool:
+        row = await self.db.fetchone(
+            "SELECT 1 FROM zayafka_join_requests WHERE user_id = ? AND channel_id = ?",
+            (user_id, str(channel_id)),
+        )
+        return row is not None
+
+    _ALLOWED_TABLES = frozenset({"public_channels", "zayafka_channels"})
+
+    async def _record_channel_join(self, user_id: int, channel_id: str, table_name: str) -> None:
+        if table_name not in self._ALLOWED_TABLES:
+            logger.error("Invalid table name rejected: %s", table_name)
+            return
+        # Check if already joined
+        row = await self.db.fetchone(
+            "SELECT 1 FROM channel_joins WHERE user_id = ? AND channel_id = ?",
+            (user_id, str(channel_id)),
+        )
+        if not row:
+            # Insert into joins
+            await self.db.execute(
+                "INSERT OR IGNORE INTO channel_joins (user_id, channel_id) VALUES (?, ?)",
+                (user_id, str(channel_id)),
+            )
+            # Increment joined_count
+            await self.db.execute(
+                f"UPDATE {table_name} SET joined_count = joined_count + 1 WHERE channel_id = ?",
+                (str(channel_id),),
+            )
+            await self.db.commit()
+            
+            # Fetch updated counts to check limit
+            ch_data = await self.db.fetchone(
+                f"SELECT member_limit, joined_count FROM {table_name} WHERE channel_id = ?",
+                (str(channel_id),),
+            )
+            if ch_data:
+                limit = ch_data.get("member_limit", 0) or 0
+                joined = ch_data.get("joined_count", 0) or 0
+                if limit > 0 and joined >= limit:
+                    logger.info("Channel %s reached subscriber limit (%d/%d). Auto-disconnecting...", channel_id, joined, limit)
+                    await self.remove_channel(channel_id)
+
+    async def get_unsubscribed(self, user_id: int) -> list[dict]:
+        result: list[dict] = []
+
+        # Get list of current public channels first
+        public_channels = await self.get_public_channels()
+        for ch in public_channels:
+            if await self._is_member(user_id, ch["channel_id"]):
+                await self._record_channel_join(user_id, ch["channel_id"], "public_channels")
+            else:
+                result.append({
+                    "name": ch["channel_name"] or ch["channel_id"],
+                    "link": ch.get("channel_link") or "",
+                    "type": "public",
+                })
+
+        # Get list of current zayafka channels
+        zayafka_channels = await self.get_zayafka_channels()
+        for ch in zayafka_channels:
+            is_member = await self._is_member(user_id, ch["channel_id"])
+            has_request = await self._has_zayafka_request(user_id, ch["channel_id"])
+            if is_member or has_request:
+                await self._record_channel_join(user_id, ch["channel_id"], "zayafka_channels")
+            else:
+                result.append({
+                    "name": ch["channel_name"] or ch["channel_id"],
+                    "link": ch.get("invite_link") or "",
+                    "type": "zayafka",
+                    "channel_id": ch["channel_id"],
+                })
+
+        return result
+
+    async def is_subscribed_all(self, user_id: int) -> bool:
+        return len(await self.get_unsubscribed(user_id)) == 0
+
+    def build_prompt_text(self, unsubscribed: list[dict]) -> str:
+        return f"{ce('🔔')} Botdan foydalanish uchun quyidagi kanallarga obuna bo'ling:"
+
+    # ── Admin helpers ────────────────────────────────────────────────────────
+
+    async def add_public_channel(self, channel_id: str, channel_name: str, channel_link: str, member_limit: int = 0) -> None:
+        await self.db.execute(
+            "INSERT OR REPLACE INTO public_channels (channel_id, channel_name, channel_link, member_limit, joined_count) "
+            "VALUES (?, ?, ?, ?, COALESCE((SELECT joined_count FROM public_channels WHERE channel_id = ?), 0))",
+            (channel_id, channel_name, channel_link, member_limit, channel_id),
+        )
+        await self.db.commit()
+
+    async def add_zayafka_channel(self, channel_id: str, channel_name: str, invite_link: str, member_limit: int = 0) -> None:
+        await self.db.execute(
+            "INSERT OR REPLACE INTO zayafka_channels (channel_id, channel_name, invite_link, member_limit, joined_count) "
+            "VALUES (?, ?, ?, ?, COALESCE((SELECT joined_count FROM zayafka_channels WHERE channel_id = ?), 0))",
+            (channel_id, channel_name, invite_link, member_limit, channel_id),
+        )
+        await self.db.commit()
+
+    async def remove_public_channel(self, channel_id: str) -> bool:
+        cursor = await self.db.execute(
+            "DELETE FROM public_channels WHERE channel_id = ?", (channel_id,)
+        )
+        await self.db.commit()
+        return cursor.rowcount > 0
+
+    async def remove_zayafka_channel(self, channel_id: str) -> bool:
+        cursor = await self.db.execute(
+            "DELETE FROM zayafka_channels WHERE channel_id = ?", (channel_id,)
+        )
+        await self.db.commit()
+        return cursor.rowcount > 0
+
+    async def remove_channel(self, channel_id: str) -> bool:
+        r1 = await self.remove_public_channel(channel_id)
+        r2 = await self.remove_zayafka_channel(channel_id)
+        return r1 or r2
+
+
+============================================================
+FILE: services\verification_service.py
+============================================================
+from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+
+from database.connection import Database
+
+
+class VerificationService:
+    def __init__(self, db: Database, bot: Bot) -> None:
+        self.db = db
+        self.bot = bot
+
+    async def check_user_in_bot(self, user_id: int) -> bool:
+        """Returns False if the user has blocked the bot."""
+        try:
+            await self.bot.send_chat_action(chat_id=user_id, action="typing")
+            return True
+        except (TelegramForbiddenError, TelegramBadRequest):
+            return False
+        except Exception:
+            return False
+
+    async def check_user_in_channel(self, user_id: int, channel_id: int) -> bool:
+        """Returns True if the user is an active member of the channel."""
+        try:
+            member = await self.bot.get_chat_member(channel_id, user_id)
+            return member.status not in ("left", "kicked", "banned")
+        except Exception:
+            return False
+
+
+============================================================
+FILE: states\__init__.py
+============================================================
+from states.admin import (
+    AddPublicFlow,
+    AddZayafkaFlow,
+    BroadcastFlow,
+    DelPublicFlow,
+    DelZayafkaFlow,
+    ResultsFlow,
+    SetupWizard,
+)
+
+__all__ = [
+    "SetupWizard",
+    "AddPublicFlow",
+    "AddZayafkaFlow",
+    "DelPublicFlow",
+    "DelZayafkaFlow",
+    "BroadcastFlow",
+    "ResultsFlow",
+]
+
+
+============================================================
+FILE: states\admin.py
+============================================================
+from aiogram.fsm.state import State, StatesGroup
+
+
+class SetupWizard(StatesGroup):
+    waiting_group_id = State()
+    waiting_channel_id = State()
+
+
+class AddPublicFlow(StatesGroup):
+    waiting_channel_id = State()
+    waiting_limit = State()
+
+
+class AddZayafkaFlow(StatesGroup):
+    waiting_channel_id = State()
+    waiting_invite_link = State()
+    waiting_limit = State()
+
+
+class DelPublicFlow(StatesGroup):
+    waiting_channel_id = State()
+
+
+class DelZayafkaFlow(StatesGroup):
+    waiting_channel_id = State()
+
+
+class BroadcastFlow(StatesGroup):
+    waiting_message = State()
+    confirm_send = State()
+
+
+class ResultsFlow(StatesGroup):
+    waiting_count = State()
+    waiting_reply_link = State()
+    confirm = State()
+
+
+============================================================
+FILE: utils\__init__.py
+============================================================
+
+
+============================================================
+FILE: utils\emoji.py
+============================================================
+import json
+import os
+
+_JSON_PATH = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "custom_emojis.json"))
+
+
+def _load() -> dict[str, str]:
+    if os.path.exists(_JSON_PATH):
+        with open(_JSON_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+_CE: dict[str, str] = _load()
+
+
+def ce(emoji: str) -> str:
+    eid = _CE.get(emoji)
+    if eid:
+        return f'<tg-emoji emoji-id="{eid}">{emoji}</tg-emoji>'
+    return emoji
+
+
+def reload() -> None:
+    _CE.clear()
+    _CE.update(_load())

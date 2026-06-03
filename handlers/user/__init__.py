@@ -1,7 +1,5 @@
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.enums import ChatType
-from aiogram.filters import Filter
-from aiogram import F
 
 from handlers.user.group_handlers import router as group_router
 from handlers.user.join_request import router as join_request_router

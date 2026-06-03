@@ -86,4 +86,5 @@ class SubscriptionMiddleware(BaseMiddleware):
             await event.answer(text, reply_markup=keyboard)
         elif isinstance(event, CallbackQuery):
             await event.answer("Avval kanallarga obuna bo'ling!", show_alert=True)
-            await event.message.answer(text, reply_markup=keyboard)
+            if event.message:
+                await event.message.answer(text, reply_markup=keyboard)

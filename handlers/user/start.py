@@ -79,7 +79,7 @@ async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str
     sub_svc = SubscriptionService(db, bot)
     unsubscribed = await sub_svc.get_unsubscribed(user_id)
     if unsubscribed:
-        await message.answer(
+        await message.reply(
             sub_svc.build_prompt_text(unsubscribed),
             reply_markup=get_subscription_keyboard(unsubscribed),
         )
@@ -92,7 +92,7 @@ async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str
             "SELECT verified, contest_number FROM users WHERE user_id = ?", (user_id,)
         )
         if not user_row:
-            await message.answer("❌ Xatolik yuz berdi. /start bosing.")
+            await message.reply("❌ Xatolik yuz berdi. /start bosing.")
             return
         verified = user_row.get("verified") or False
         contest_number = user_row.get("contest_number")
@@ -120,7 +120,7 @@ async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str
             f"{ce('🔗')} Sizning havolangiz:\n<code>{ref_link}</code>"
         )
 
-    await message.answer(text, reply_markup=get_user_reply_keyboard())
+    await message.reply(text, reply_markup=get_user_reply_keyboard())
 
     result = await db.execute(
         "UPDATE users SET welcomed = TRUE WHERE user_id = ? AND welcomed = FALSE", (user_id,)
@@ -152,7 +152,7 @@ async def cmd_start(message: Message, db: Database, bot: Bot, bot_username: str)
 
     row = await db.fetchone("SELECT phone FROM users WHERE user_id = ?", (user.id,))
     if not row or not row.get("phone"):
-        await message.answer(
+        await message.reply(
             f"{ce('📱')} Botdan foydalanish uchun telefon raqamingizni ulashing:",
             reply_markup=get_phone_keyboard(),
         )
@@ -165,7 +165,7 @@ async def cmd_start(message: Message, db: Database, bot: Bot, bot_username: str)
 async def handle_contact(message: Message, db: Database, bot: Bot, bot_username: str) -> None:
     contact = message.contact
     if contact.user_id is not None and contact.user_id != message.from_user.id:
-        await message.answer("❌ Faqat o'z raqamingizni ulashing.")
+        await message.reply("❌ Faqat o'z raqamingizni ulashing.")
         return
 
     await db.execute(
@@ -174,7 +174,7 @@ async def handle_contact(message: Message, db: Database, bot: Bot, bot_username:
     )
     await db.commit()
 
-    await message.answer(f"{ce('✅')} Telefon raqam saqlandi!", reply_markup=get_keyboard_remove())
+    await message.reply(f"{ce('✅')} Telefon raqam saqlandi!", reply_markup=get_keyboard_remove())
     await _show_main(message, db, bot, bot_username, message.from_user.id)
 
 
@@ -184,7 +184,7 @@ async def btn_my_link(message: Message, db: Database, bot_username: str) -> None
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     count = await ReferralService(db).get_referral_count(user_id)
 
-    await message.answer(
+    await message.reply(
         f"{ce('🔗')} <b>Sizning referal havolangiz:</b>\n\n"
         f"<code>{ref_link}</code>\n\n"
         f"{ce('👥')} Taklif qilganlar: <b>{count}/5</b>"
@@ -200,7 +200,7 @@ async def btn_my_refs(message: Message, db: Database) -> None:
         (user_id,),
     )
     if not row:
-        await message.answer("Ma'lumot topilmadi. /start bosing.")
+        await message.reply("Ma'lumot topilmadi. /start bosing.")
         return
 
     count: int = row["referral_count"]
@@ -221,7 +221,7 @@ async def btn_my_refs(message: Message, db: Database) -> None:
     if verified and contest_number:
         lines.append(f"{ce('✅')} Konkurs raqamingiz: <b>{contest_number}</b>")
 
-    await message.answer("\n".join(lines), reply_markup=get_main_inline_keyboard())
+    await message.reply("\n".join(lines), reply_markup=get_main_inline_keyboard())
 
 
 @router.callback_query(F.data == "my_friends")

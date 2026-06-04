@@ -1,5 +1,4 @@
-from aiogram import F, Router
-from aiogram.enums import ChatType
+from aiogram import Router
 
 from handlers.user.group_handlers import router as group_router
 from handlers.user.join_request import router as join_request_router
@@ -9,9 +8,7 @@ from middlewares.anti_flood import AntiFloodMiddleware
 from middlewares.queue_middleware import QueueMiddleware
 from middlewares.subscription_middleware import SubscriptionMiddleware
 
-# Faqat private chat handlerlari
 user_router = Router()
-user_router.message.filter(F.chat.type == ChatType.PRIVATE)
 user_router.message.middleware(QueueMiddleware(max_concurrent=20))
 user_router.callback_query.middleware(QueueMiddleware(max_concurrent=20))
 user_router.message.middleware(AntiFloodMiddleware(limit=3, window=5.0))

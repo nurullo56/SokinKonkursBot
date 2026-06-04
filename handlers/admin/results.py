@@ -105,7 +105,7 @@ async def results_get_count(message: Message, state: FSMContext, db: Database, b
     verified_users = await db.fetchall(
         "SELECT user_id, contest_number, first_name, username, referral_count "
         "FROM users WHERE verified = TRUE "
-        "ORDER BY RANDOM()"
+        "ORDER BY referral_count DESC"
     )
     if len(verified_users) < count:
         await state.clear()

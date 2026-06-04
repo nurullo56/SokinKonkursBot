@@ -6,4 +6,4 @@ from typing import List
 class Config:
     bot_token: str = ""
     admin_ids: List[int] = field(default_factory=list)
-    db_path: str = "contest.db"
+    db_path: str = "/app/data/contest.db"

@@ -7,7 +7,7 @@ services:
     environment:
       - REDIS_URL=redis://localhost:6379/0
     volumes:
-      - ./contest.db:/app/contest.db
+      - db_data:/app/data
       - ./custom_emojis.json:/app/custom_emojis.json
     depends_on:
       - redis
@@ -20,4 +20,5 @@ services:
       - redis_data:/data
 
 volumes:
+  db_data:
   redis_data:

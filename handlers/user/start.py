@@ -1,3 +1,5 @@
+from html import escape
+
 from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -30,9 +32,10 @@ async def _ensure_user(
         "VALUES (?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         (user_id, username or "", first_name or ""),
     )
+    # Foydalanuvchi yana yozyapti — demak tirik, blok belgisini olib tashlaymiz.
     await db.execute(
-        "UPDATE users SET username = ?, first_name = ?, updated_at = CURRENT_TIMESTAMP "
-        "WHERE user_id = ?",
+        "UPDATE users SET username = ?, first_name = ?, is_blocked = FALSE, "
+        "updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
         (username or "", first_name or "", user_id),
     )
     await db.commit()
@@ -53,11 +56,34 @@ async def _notify_referrer(db: Database, bot: Bot, new_user) -> None:
     try:
         await bot.send_message(
             referrer_id,
-            f"{ce('🎉')} Sizning havolangiz orqali <b>{full_name}</b> ro'yxatdan o'tdi!\n\n"
+            f"{ce('🎉')} Sizning havolangiz orqali <b>{escape(full_name)}</b> ro'yxatdan o'tdi!\n\n"
             f"{ce('👥')} Taklif qilganlaringiz: <b>{count}/5</b>",
         )
     except Exception:
         pass
+
+
+async def _credit_pending_referral(db: Database, bot: Bot, new_user) -> None:
+    """Onboarding tugadi — kutilayotgan referrer endi hisoblanadi va xabardor qilinadi.
+
+    Referal /start bosilishi bilan emas, aynan shu yerda hisoblanadi:
+    bu soxta/throwaway akkauntlar bilan ballarni shishirishni qiyinlashtiradi.
+    """
+    row = await db.fetchone(
+        "SELECT pending_referrer_id FROM users WHERE user_id = ?", (new_user.id,)
+    )
+    referrer_id = row.get("pending_referrer_id") if row else None
+    if not referrer_id:
+        return
+
+    added = await ReferralService(db).add_referral(referrer_id, new_user.id)
+    await db.execute(
+        "UPDATE users SET pending_referrer_id = NULL WHERE user_id = ?", (new_user.id,)
+    )
+    await db.commit()
+
+    if added:
+        await _notify_referrer(db, bot, new_user)
 
 
 async def _notify_admins(db: Database, bot: Bot, user: object) -> None:
@@ -67,7 +93,7 @@ async def _notify_admins(db: Database, bot: Bot, user: object) -> None:
     ]
     full_name = " ".join(filter(None, [user.first_name, user.last_name])).strip() or user.username or str(user.id)
     username_part = f" (@{user.username})" if user.username else ""
-    text = f"✅ Yangi ishtirokchi ro'yxatdan o'tdi!\n\n👤 {full_name}{username_part}\n🆔 <code>{user.id}</code>"
+    text = f"✅ Yangi ishtirokchi ro'yxatdan o'tdi!\n\n👤 {escape(full_name)}{username_part}\n🆔 <code>{user.id}</code>"
     for admin_id in admin_ids:
         try:
             await bot.send_message(admin_id, text)
@@ -128,7 +154,7 @@ async def _show_main(message: Message, db: Database, bot: Bot, bot_username: str
     await db.commit()
     if result.rowcount > 0:
         await _notify_admins(db, bot, message.from_user)
-        await _notify_referrer(db, bot, message.from_user)
+        await _credit_pending_referral(db, bot, message.from_user)
 
 
 
@@ -148,7 +174,17 @@ async def cmd_start(message: Message, db: Database, bot: Bot, bot_username: str)
                     "SELECT user_id FROM users WHERE user_id = ?", (referrer_id,)
                 )
                 if referrer:
-                    await ReferralService(db).add_referral(referrer_id, user.id)
+                    # Hali hisoblamaymiz — onboarding (telefon + obuna) tugaganda
+                    # _credit_pending_referral() hisoblaydi. Faqat yangi, hali
+                    # yakunlamagan va boshqa referrer ga bog'lanmagan userga yozamiz.
+                    await db.execute(
+                        "UPDATE users SET pending_referrer_id = ? "
+                        "WHERE user_id = ? AND welcomed = FALSE "
+                        "AND pending_referrer_id IS NULL "
+                        "AND user_id NOT IN (SELECT referred_id FROM referrals)",
+                        (referrer_id, user.id),
+                    )
+                    await db.commit()
 
     row = await db.fetchone("SELECT phone FROM users WHERE user_id = ?", (user.id,))
     if not row or not row.get("phone"):
@@ -239,7 +275,7 @@ async def my_friends_callback(callback: CallbackQuery, db: Database) -> None:
         lines = [f"{ce('👥')} <b>Do'stlar ro'yxati ({len(referred_rows)} ta):</b>\n"]
         for i, r in enumerate(referred_rows[:20], 1):
             name = (r.get("first_name") or "").strip() or r.get("username") or "Noma'lum"
-            lines.append(f"  {i}. {name}")
+            lines.append(f"  {i}. {escape(name)}")
         if len(referred_rows) > 20:
             lines.append(f"  … va yana {len(referred_rows) - 20} ta")
     else:
@@ -297,6 +333,7 @@ async def check_subscription_callback(callback: CallbackQuery, db: Database, bot
                 await db.commit()
                 if result.rowcount > 0:
                     await _notify_admins(db, bot, callback.from_user)
+                    await _credit_pending_referral(db, bot, callback.from_user)
             else:
                 await callback.message.edit_text(
                     f"{ce('✅')} Ajoyib! Siz barcha kanallarga obuna bo'ldingiz.\n\n"

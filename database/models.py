@@ -112,6 +112,17 @@ async def init_db(db: Database) -> None:
         await db.execute("ALTER TABLE users ADD COLUMN welcomed BOOLEAN DEFAULT FALSE")
     except Exception:
         pass
+    # Referal soxtalashtirishga qarshi: referrer faqat onboarding tugaganda hisoblanadi.
+    # Shu vaqtgacha kim taklif qilganini "kutilayotgan" sifatida saqlaymiz.
+    try:
+        await db.execute("ALTER TABLE users ADD COLUMN pending_referrer_id INTEGER")
+    except Exception:
+        pass
+    # Botni bloklagan foydalanuvchilar — broadcast ularni qayta-qayta urmasligi uchun.
+    try:
+        await db.execute("ALTER TABLE users ADD COLUMN is_blocked BOOLEAN DEFAULT FALSE")
+    except Exception:
+        pass
 
     for table in ("public_channels", "zayafka_channels"):
         try:

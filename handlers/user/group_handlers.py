@@ -2,6 +2,7 @@ from aiogram import F, Router
 from aiogram.enums import ChatType
 from aiogram.filters import Command
 from aiogram.types import Message
+from html import escape
 
 from database.connection import Database
 from services.contest_service import ContestService
@@ -73,6 +74,6 @@ async def handle_group_screenshot(message: Message, db: Database) -> None:
     user = message.from_user
     full_name = " ".join(filter(None, [user.first_name, user.last_name])).strip() or user.username or str(user.id)
     await message.reply(
-        f"{ce('✅')} {full_name}, Sizning xabaringiz qabul qilindi. "
+        f"{ce('✅')} {escape(full_name)}, Sizning xabaringiz qabul qilindi. "
         f"Tartib raqamingiz: <b>{number}</b>"
     )

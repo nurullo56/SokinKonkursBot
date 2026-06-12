@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, or_f
@@ -139,7 +140,7 @@ async def results_get_count(message: Message, state: FSMContext, db: Database, b
     lines = ["🏆 KONKURS NATIJALARI\n"]
     for i, winner in enumerate(winners):
         full_name = (winner.get("first_name") or "").strip() or winner.get("username") or str(winner["user_id"])
-        lines.append(f"{_PLACE_EMOJIS[i]} {i + 1}-o'rin — {full_name} — {winner['referral_count']} ta referal — Raqam: {winner['contest_number']}")
+        lines.append(f"{_PLACE_EMOJIS[i]} {i + 1}-o'rin — {escape(full_name)} — {winner['referral_count']} ta referal — Raqam: {winner['contest_number']}")
     lines.append("\nTabriklaymiz! 🎉")
     result_text = "\n".join(lines)
 

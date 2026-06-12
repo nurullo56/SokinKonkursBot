@@ -79,8 +79,8 @@ async def send_broadcast(message: Message, state: FSMContext, db: Database) -> N
         await message.answer("Xatolik yuz berdi. Qaytadan urinib ko'ring.", reply_markup=get_admin_reply_keyboard())
         return
 
-    # Fetch all users
-    users = await db.fetchall("SELECT user_id FROM users")
+    # Botni bloklaganlarni o'tkazib yuboramiz — ularga urinish behuda vaqt.
+    users = await db.fetchall("SELECT user_id FROM users WHERE is_blocked = FALSE")
     if not users:
         await message.answer("Foydalanuvchilar topilmadi.", reply_markup=get_admin_reply_keyboard())
         return
@@ -93,6 +93,7 @@ async def send_broadcast(message: Message, state: FSMContext, db: Database) -> N
     success = 0
     failed = 0
     blocked = 0
+    blocked_ids: list[int] = []
 
     for i, user in enumerate(users):
         user_id = user["user_id"]
@@ -106,6 +107,7 @@ async def send_broadcast(message: Message, state: FSMContext, db: Database) -> N
             success += 1
         except TelegramForbiddenError:
             blocked += 1
+            blocked_ids.append(user_id)
         except TelegramAPIError as e:
             logger.error("Failed to send broadcast to %s: %s", user_id, e)
             failed += 1
@@ -128,6 +130,15 @@ async def send_broadcast(message: Message, state: FSMContext, db: Database) -> N
                 )
             except Exception:
                 pass
+
+    # Bloklaganlarni belgilab qo'yamiz — keyingi broadcast ularni o'tkazib yuboradi.
+    if blocked_ids:
+        placeholders = ",".join("?" * len(blocked_ids))
+        await db.execute(
+            f"UPDATE users SET is_blocked = TRUE WHERE user_id IN ({placeholders})",
+            tuple(blocked_ids),
+        )
+        await db.commit()
 
     await status_message.reply(
         f"✅ <b>Reklama tarqatish yakunlandi!</b>\n\n"

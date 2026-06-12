@@ -15,6 +15,7 @@ from keyboards.user_kb import (
     get_subscription_keyboard,
     get_user_reply_keyboard,
 )
+from middlewares.subscription_middleware import SubscriptionMiddleware
 from services.contest_service import ContestService
 from services.referral_service import ReferralService
 from services.subscription_service import SubscriptionService
@@ -297,6 +298,8 @@ async def zayafka_joined_callback(callback: CallbackQuery, db: Database) -> None
         (user_id, channel_id),
     )
     await db.commit()
+    # Holat o'zgardi — obuna keshini tozalaymiz, keyingi tekshiruv yangi bo'lsin.
+    SubscriptionMiddleware.invalidate(user_id)
     await callback.answer("✅ Qabul qilindi! Endi 'Obunani tekshirish' ni bosing.", show_alert=False)
 
 
@@ -309,6 +312,8 @@ async def check_subscription_callback(callback: CallbackQuery, db: Database, bot
         unsubscribed = await sub_svc.get_unsubscribed(user_id)
 
         if not unsubscribed:
+            # Obuna tasdiqlandi — eski manfiy keshni tozalaymiz.
+            SubscriptionMiddleware.invalidate(user_id)
             bot_mode = await db.get_setting("bot_mode") or "BOT"
             if bot_mode == "CHANNEL":
                 user_row = await db.fetchone(

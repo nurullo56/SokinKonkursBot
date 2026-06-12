@@ -11,9 +11,16 @@ from services.subscription_service import SubscriptionService
 
 
 class SubscriptionMiddleware(BaseMiddleware):
-    # Class-level cache: {user_id: (is_subscribed, expires_at)}
-    _cache: dict[int, tuple[bool, float]] = {}
-    _CACHE_TTL = 60.0  # kesh muddati - 60 soniya
+    # Class-level cache: {user_id: (unsubscribed_list, expires_at)}
+    # Bo'sh ro'yxat = obuna bo'lgan. Musbat ham, manfiy ham keshlanadi.
+    _cache: dict[int, tuple[list[dict], float]] = {}
+    _CACHE_TTL = 60.0       # obuna bo'lganlar uchun
+    _NEG_CACHE_TTL = 15.0   # obuna bo'lmaganlar — qisqaroq, tez qayta tekshirish uchun
+
+    @classmethod
+    def invalidate(cls, user_id: int) -> None:
+        """Foydalanuvchi holati o'zgarganda (masalan obuna bo'lgach) keshni tozalash."""
+        cls._cache.pop(user_id, None)
 
     async def __call__(
         self,
@@ -61,24 +68,22 @@ class SubscriptionMiddleware(BaseMiddleware):
         if isinstance(event, CallbackQuery) and event.data == "check_subscription":
             return await handler(event, data)
 
-        # Keshni tekshirish
+        # Keshni tekshirish (musbat va manfiy holat ikkalasi ham keshlanadi)
+        sub_svc = SubscriptionService(db, bot)
         user_id = from_user.id
         now = time.time()
-        if user_id in self._cache:
-            is_sub, expires = self._cache[user_id]
-            if now < expires and is_sub:
-                return await handler(event, data)
 
-        sub_svc = SubscriptionService(db, bot)
-        unsubscribed = await sub_svc.get_unsubscribed(user_id)
+        cached = self._cache.get(user_id)
+        if cached is not None and now < cached[1]:
+            unsubscribed = cached[0]
+        else:
+            unsubscribed = await sub_svc.get_unsubscribed(user_id)
+            ttl = self._CACHE_TTL if not unsubscribed else self._NEG_CACHE_TTL
+            self._cache[user_id] = (unsubscribed, now + ttl)
 
         if not unsubscribed:
-            # Obuna muvaffaqiyatli o'tgan bo'lsa keshga yozamiz
-            self._cache[user_id] = (True, now + self._CACHE_TTL)
             return await handler(event, data)
 
-        # Obunadan chiqqan bo'lsa keshdan o'chirib tashlaymiz
-        self._cache.pop(user_id, None)
         text = sub_svc.build_prompt_text(unsubscribed)
         keyboard = get_subscription_keyboard(unsubscribed)
 

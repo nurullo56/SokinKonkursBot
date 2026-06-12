@@ -1,6 +1,7 @@
 import logging
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 
 from database.connection import Database
 from utils.emoji import ce
@@ -19,7 +20,12 @@ class SubscriptionService:
     async def get_zayafka_channels(self) -> list[dict]:
         return await self.db.fetchall("SELECT * FROM zayafka_channels ORDER BY id")
 
-    async def _is_member(self, user_id: int, channel_id: str) -> bool:
+    async def _is_member(self, user_id: int, channel_id: str) -> bool | None:
+        """A'zolik holati: True = a'zo, False = a'zo emas, None = aniqlab bo'lmadi.
+
+        None — rate-limit yoki tarmoq xatosi (bizning/infra muammosi). Bu holatda
+        foydalanuvchini bloklamaymiz va a'zolikni soxta yozmaymiz.
+        """
         # Pass numeric IDs as int — Telegram API works more reliably this way
         try:
             cid: int | str = int(channel_id) if channel_id.lstrip("-").isdigit() else channel_id
@@ -27,6 +33,10 @@ class SubscriptionService:
             result = member.status not in ("left", "kicked", "banned")
             logger.debug("check_member channel=%s user=%s status=%s → %s", cid, user_id, member.status, result)
             return result
+        except (TelegramRetryAfter, TelegramNetworkError) as e:
+            # Vaqtinchalik muammo — foydalanuvchi aybi emas, bloklamaymiz.
+            logger.warning("get_chat_member transient error channel=%s user=%s → %s", channel_id, user_id, e)
+            return None
         except Exception as e:
             logger.warning("get_chat_member FAILED channel=%s user=%s → %s", channel_id, user_id, e)
             return False
@@ -80,29 +90,32 @@ class SubscriptionService:
         # Get list of current public channels first
         public_channels = await self.get_public_channels()
         for ch in public_channels:
-            if await self._is_member(user_id, ch["channel_id"]):
+            status = await self._is_member(user_id, ch["channel_id"])
+            if status is True:
                 await self._record_channel_join(user_id, ch["channel_id"], "public_channels")
-            else:
+            elif status is False:
                 result.append({
                     "name": ch["channel_name"] or ch["channel_id"],
                     "link": ch.get("channel_link") or "",
                     "type": "public",
                 })
+            # status is None → aniqlab bo'lmadi, bloklamaymiz va yozmaymiz
 
         # Get list of current zayafka channels
         zayafka_channels = await self.get_zayafka_channels()
         for ch in zayafka_channels:
-            is_member = await self._is_member(user_id, ch["channel_id"])
+            status = await self._is_member(user_id, ch["channel_id"])
             has_request = await self._has_zayafka_request(user_id, ch["channel_id"])
-            if is_member or has_request:
+            if status is True or has_request:
                 await self._record_channel_join(user_id, ch["channel_id"], "zayafka_channels")
-            else:
+            elif status is False:
                 result.append({
                     "name": ch["channel_name"] or ch["channel_id"],
                     "link": ch.get("invite_link") or "",
                     "type": "zayafka",
                     "channel_id": ch["channel_id"],
                 })
+            # status is None va so'rov yo'q → noaniq, bloklamaymiz
 
         return result
 

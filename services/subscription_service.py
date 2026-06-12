@@ -1,4 +1,5 @@
 import logging
+from html import escape
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
@@ -74,7 +75,7 @@ class SubscriptionService:
             
             # Fetch updated counts to check limit
             ch_data = await self.db.fetchone(
-                f"SELECT member_limit, joined_count FROM {table_name} WHERE channel_id = ?",
+                f"SELECT channel_name, member_limit, joined_count FROM {table_name} WHERE channel_id = ?",
                 (str(channel_id),),
             )
             if ch_data:
@@ -82,7 +83,32 @@ class SubscriptionService:
                 joined = ch_data.get("joined_count", 0) or 0
                 if limit > 0 and joined >= limit:
                     logger.info("Channel %s reached subscriber limit (%d/%d). Auto-disconnecting...", channel_id, joined, limit)
+                    channel_name = ch_data.get("channel_name") or str(channel_id)
                     await self.remove_channel(channel_id)
+                    await self._notify_admins_channel_removed(channel_id, channel_name, joined, limit)
+
+    async def _notify_admins_channel_removed(
+        self, channel_id: str, channel_name: str, joined: int, limit: int
+    ) -> None:
+        """Kanal limitга yetib avtomat o'chirilganда adminlarga ogohlantirish."""
+        admin_ids_str = await self.db.get_setting("admin_ids") or ""
+        admin_ids = [
+            int(x.strip())
+            for x in admin_ids_str.split(",")
+            if x.strip().lstrip("-").isdigit()
+        ]
+        text = (
+            f"⚠️ <b>Kanal limitга yetdi va avtomat o'chirildi</b>\n\n"
+            f"📢 Kanal: {escape(channel_name)}\n"
+            f"🆔 <code>{escape(str(channel_id))}</code>\n"
+            f"👥 Obunachi: <b>{joined}/{limit}</b>\n\n"
+            f"Bu kanal majburiy obuna ro'yxatidan chiqarildi."
+        )
+        for admin_id in admin_ids:
+            try:
+                await self.bot.send_message(admin_id, text)
+            except Exception:
+                logger.warning("Could not notify admin %s about channel removal", admin_id)
 
     async def get_unsubscribed(self, user_id: int) -> list[dict]:
         result: list[dict] = []

@@ -42,6 +42,30 @@ class SubscriptionService:
             logger.warning("get_chat_member FAILED channel=%s user=%s → %s", channel_id, user_id, e)
             return False
 
+    async def _display_name(self, ch: dict, table_name: str) -> str:
+        """Kanal nomini qaytaradi. Nom yo'q yoki ID bilan bir xil bo'lsa,
+        Telegram'dan haqiqiy nomni olib DB'ga keshlab qo'yadi (bir martalik)."""
+        cid = str(ch["channel_id"])
+        name = (ch.get("channel_name") or "").strip()
+        if name and name != cid:
+            return name
+        if table_name not in self._ALLOWED_TABLES:
+            return name or cid
+        try:
+            chat_id: int | str = int(cid) if cid.lstrip("-").isdigit() else cid
+            chat = await self.bot.get_chat(chat_id)
+            title = (chat.title or "").strip()
+            if title:
+                await self.db.execute(
+                    f"UPDATE {table_name} SET channel_name = ? WHERE channel_id = ?",
+                    (title, cid),
+                )
+                await self.db.commit()
+                return title
+        except Exception as e:
+            logger.warning("Could not resolve channel name %s: %s", cid, e)
+        return name or cid
+
     async def _has_zayafka_request(self, user_id: int, channel_id: str) -> bool:
         row = await self.db.fetchone(
             "SELECT 1 FROM zayafka_join_requests WHERE user_id = ? AND channel_id = ?",
@@ -121,7 +145,7 @@ class SubscriptionService:
                 await self._record_channel_join(user_id, ch["channel_id"], "public_channels")
             elif status is False:
                 result.append({
-                    "name": ch["channel_name"] or ch["channel_id"],
+                    "name": await self._display_name(ch, "public_channels"),
                     "link": ch.get("channel_link") or "",
                     "type": "public",
                 })
@@ -136,7 +160,7 @@ class SubscriptionService:
                 await self._record_channel_join(user_id, ch["channel_id"], "zayafka_channels")
             elif status is False:
                 result.append({
-                    "name": ch["channel_name"] or ch["channel_id"],
+                    "name": await self._display_name(ch, "zayafka_channels"),
                     "link": ch.get("invite_link") or "",
                     "type": "zayafka",
                     "channel_id": ch["channel_id"],

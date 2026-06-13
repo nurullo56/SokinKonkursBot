@@ -17,6 +17,7 @@ def get_phone_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[[KeyboardButton(text="📱 Telefon raqamni ulashish", request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
+        selective=True,
     )
 
 
@@ -30,6 +31,7 @@ def get_user_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BTN_MY_LINK), KeyboardButton(text=BTN_MY_REFS)],
         ],
         resize_keyboard=True,
+        selective=True,
     )
 
 
@@ -50,16 +52,9 @@ def get_subscription_keyboard(unsubscribed: list[dict] | None = None) -> InlineK
             if link:
                 rows.append([InlineKeyboardButton(text=f"📢 {ch['name']}", url=link)])
         else:
-            channel_id = ch.get("channel_id", "")
-            row = []
+            # Zayafka: faqat kanal havolasi. So'rov chat_join_request orqali
+            # avtomat yoziladi, shuning uchun "So'rov yubordim" tugmasi kerak emas.
             if link:
-                row.append(InlineKeyboardButton(text=f"🔐 {ch['name']}", url=link))
-            if channel_id:
-                row.append(InlineKeyboardButton(
-                    text="✅ So'rov yubordim",
-                    callback_data=f"zayafka_joined:{channel_id}",
-                ))
-            if row:
-                rows.append(row)
+                rows.append([InlineKeyboardButton(text=f"🔐 {ch['name']}", url=link)])
     rows.append([InlineKeyboardButton(text="✅ Obunani tekshirish", callback_data="check_subscription")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
